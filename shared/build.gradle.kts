@@ -49,6 +49,10 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
+
+            // İKON HATALARINI ÇÖZEN SATIR (Bunu ekleyin):
+            implementation(compose.materialIconsExtended)
+
             implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
         }
         iosMain.dependencies {
@@ -67,7 +71,9 @@ dependencies {
 sqldelight {
     databases {
         create("AppDatabase") {
-            packageName.set("com.eray.muhasebeapp.shared.database")
+            // 🎯 Eklentinin kırmızılığını çözen, üretilen klasörle birebir eşleşen paket adı:
+            packageName.set("com.eray.muhasebeapp.database.shared")
+            dialect("app.cash.sqldelight:sqlite-3-35-dialect:2.0.2")
         }
     }
 }

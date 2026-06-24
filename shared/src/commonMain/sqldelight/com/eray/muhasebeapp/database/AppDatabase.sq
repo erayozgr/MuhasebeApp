@@ -1,0 +1,39 @@
+CREATE TABLE UrunEntity (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    barkod TEXT NOT NULL,
+    ad TEXT NOT NULL,
+    alisFiyati REAL NOT NULL,
+    satisFiyati REAL NOT NULL,
+    stokAdedi INTEGER NOT NULL,
+    birim TEXT NOT NULL,
+    kdvOrani INTEGER NOT NULL
+);
+
+-- Tüm ürünleri getiren sorgu (Sadece 1 tane kalmalı)
+selectAllUrun:
+SELECT * FROM UrunEntity ORDER BY ad ASC;
+
+-- Yeni ürün ekleme sorgusu
+insertUrun:
+INSERT INTO UrunEntity(barkod, ad, alisFiyati, satisFiyati, stokAdedi, birim, kdvOrani)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- İsim veya barkoda göre arama sorgusu (Sadece 1 tane kalmalı)
+searchUrun:
+SELECT * FROM UrunEntity
+WHERE ad LIKE '%' || :aramaMetni || '%' OR barkod LIKE '%' || :aramaMetni || '%'
+ORDER BY ad ASC;
+
+updateUrun:
+UPDATE UrunEntity
+SET barkod = :barkod,
+    ad = :ad,
+    alisFiyati = :alisFiyati,
+    satisFiyati = :satisFiyati,
+    stokAdedi = :stokAdedi,
+    birim = :birim,
+    kdvOrani = :kdvOrani
+WHERE id = :id;
+
+deleteUrun:
+DELETE FROM UrunEntity WHERE id = :id;
