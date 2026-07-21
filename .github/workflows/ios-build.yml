@@ -53,6 +53,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+            ENABLE_ON_DEMAND_RESOURCES=NO \
             build
 
       - name: .app'i IPA'ya paketle
