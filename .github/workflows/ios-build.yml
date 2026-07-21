@@ -1,0 +1,64 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:   # Actions sekmesinden elle tetikleme
+  push:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    runs-on: macos-15   # macOS runner
+
+    steps:
+      - name: Repo'yu çek
+        uses: actions/checkout@v4
+
+      - name: JDK kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Gradlew Dosyasına Çalıştırma İzni Ver
+        run: chmod +x gradlew
+
+      - name: Xcode sürümünü seç
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      # NOT: :shared:embedAndSign adımı silindi, xcodebuild bunu kendisi tetikleyecek.
+
+      # Eğer projenizde CocoaPods kullanıyorsanız, xcodebuild'den hemen önce
+      # "cd iosApp && pod install" adımını eklemeniz gerekir.
+      - name: Xcode ile imzasız build al
+        run: |
+          cd iosApp
+          xcodebuild \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: .app'i IPA'ya paketle
+        run: |
+          cd iosApp/build/Build/Products/Release-iphoneos
+          mkdir Payload
+          cp -r *.app Payload/
+          zip -r app-unsigned.ipa Payload
+
+      - name: IPA'yı artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: iosApp/build/Build/Products/Release-iphoneos/app-unsigned.ipa
