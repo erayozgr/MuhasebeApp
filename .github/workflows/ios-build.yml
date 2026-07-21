@@ -60,6 +60,7 @@ jobs:
             ENABLE_ON_DEMAND_RESOURCES=NO \
             SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO \
             SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO \
+            OTHER_LDFLAGS="-lsqlite3" \
             build
 
       - name: .app'i IPA'ya paketle
