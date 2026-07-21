@@ -33,11 +33,13 @@ jobs:
       - name: gradle.properties içindeki Windows JAVA yolunu temizle
         run: sed -i '' '/org.gradle.java.home/d' gradle.properties
 
-      - name: Xcode sürümünü seç
-        run: sudo xcode-select -s /Applications/Xcode_16.app
+      - name: Kurulu Xcode sürümlerini listele
+        run: ls /Applications | grep Xcode
 
-      - name: iOS platform desteğini indir/onar
-        run: sudo xcodebuild -downloadPlatform iOS
+      - name: Xcode sürümünü seç
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+
 
       # Eğer projenizde CocoaPods kullanıyorsanız, xcodebuild'den hemen önce
       # "cd iosApp && pod install" adımını eklemeniz gerekir.
