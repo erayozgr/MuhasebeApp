@@ -54,6 +54,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=17.0 \
             ENABLE_ON_DEMAND_RESOURCES=NO \
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO \
+            SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO \
             build
 
       - name: .app'i IPA'ya paketle
