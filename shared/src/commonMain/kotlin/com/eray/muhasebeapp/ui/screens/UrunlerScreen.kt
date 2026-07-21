@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.UrunEntity
+import com.eray.muhasebeapp.getEpochMillis
 
 fun Double.toParaFormat(): String {
     val tamKisim = this.toInt()
@@ -214,6 +215,16 @@ fun UrunlerScreen(
                     birim = birim,
                     kdvOrani = kdv
                 )
+                val yeniUrunId = database.appDatabaseQueries.lastInsertId().executeAsOne()
+                database.appDatabaseQueries.insertStokHareketi(
+                    urunId = yeniUrunId,
+                    urunAdi = ad,
+                    hareketTuru = "Giriş",
+                    miktar = stok,
+                    birimFiyat = alis,
+                    aciklama = "Yeni ürün eklendi",
+                    tarih = getEpochMillis().toString()
+                )
                 refreshTrigger++
                 urunEklemeDialogGoster = false
             },
@@ -260,6 +271,15 @@ fun UrunlerScreen(
                 Button(
                     onClick = {
                         database.appDatabaseQueries.deleteUrun(urun.id)
+                        database.appDatabaseQueries.insertStokHareketi(
+                            urunId = urun.id,
+                            urunAdi = urun.ad,
+                            hareketTuru = "Çıkış",
+                            miktar = urun.stokAdedi,
+                            birimFiyat = urun.alisFiyati,
+                            aciklama = "Ürün silindi",
+                            tarih = getEpochMillis().toString()
+                        )
                         refreshTrigger++
                         silinecekUrun = null
                     },

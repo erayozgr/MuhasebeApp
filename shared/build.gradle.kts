@@ -49,11 +49,20 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
+            implementation(libs.kotlinx.datetime)
 
             // İKON HATALARINI ÇÖZEN SATIR (Bunu ekleyin):
             implementation(compose.materialIconsExtended)
 
             implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
+
+            // Canlı internet istekleri için Ktor Core
+            implementation("io.ktor:ktor-client-core:2.3.12")
+
+            // JSON verilerini ayıklamak için Serialization kütüphanesi
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+            implementation("io.ktor:ktor-client-cio:2.3.12")
         }
         iosMain.dependencies {
             implementation("app.cash.sqldelight:native-driver:2.0.2")

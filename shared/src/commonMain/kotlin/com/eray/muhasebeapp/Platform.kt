@@ -5,3 +5,7 @@ interface Platform {
 }
 
 expect fun getPlatform(): Platform
+
+expect fun getEpochMillis(): Long
+
+expect fun getBugununTarihiString(): String

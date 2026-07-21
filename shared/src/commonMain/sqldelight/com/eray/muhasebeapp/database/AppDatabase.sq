@@ -37,3 +37,190 @@ WHERE id = :id;
 
 deleteUrun:
 DELETE FROM UrunEntity WHERE id = :id;
+
+
+CREATE TABLE Musteri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad TEXT NOT NULL,
+    telefon TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    bakiye REAL NOT NULL DEFAULT 0.0
+);
+
+selectAllMusteri:
+SELECT * FROM Musteri ORDER BY ad ASC;
+
+insertMusteri:
+INSERT INTO Musteri(ad, telefon, adres, bakiye)
+VALUES (?, ?, ?, ?);
+
+deleteMusteri:
+DELETE FROM Musteri WHERE id = ?;
+
+updateMusteriBakiye:
+UPDATE Musteri SET bakiye = ? WHERE id = ?;
+
+selectSatisByMusteriId:
+SELECT * FROM Satis WHERE musteriId = :musteriId ORDER BY id DESC;
+
+updateMusteri:
+UPDATE Musteri
+SET ad = :ad,
+    telefon = :telefon,
+    adres = :adres
+WHERE id = :id;
+
+
+CREATE TABLE Tedarikci (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad TEXT NOT NULL,
+    telefon TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    bakiye REAL NOT NULL DEFAULT 0.0
+);
+
+selectAllTedarikci:
+SELECT * FROM Tedarikci ORDER BY ad ASC;
+
+insertTedarikci:
+INSERT INTO Tedarikci(ad, telefon, adres, bakiye)
+VALUES (?, ?, ?, ?);
+
+deleteTedarikci:
+DELETE FROM Tedarikci WHERE id = ?;
+
+updateTedarikciBakiye:
+UPDATE Tedarikci SET bakiye = ? WHERE id = ?;
+
+selectAlisByTedarikciId:
+SELECT * FROM Alis WHERE tedarikciId = :tedarikciId ORDER BY id DESC;
+
+updateTedarikci:
+UPDATE Tedarikci
+SET ad = :ad,
+    telefon = :telefon,
+    adres = :adres
+WHERE id = :id;
+
+
+
+CREATE TABLE Satis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    musteriId INTEGER,
+    musteriAdi TEXT NOT NULL,
+    tarih TEXT NOT NULL,
+    toplamTutar REAL NOT NULL,
+    odemeTuru TEXT NOT NULL
+);
+
+CREATE TABLE SatisKalemi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    satisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet INTEGER NOT NULL,
+    birim TEXT NOT NULL DEFAULT 'adet',
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+
+selectAllSatis:
+SELECT * FROM Satis ORDER BY id DESC;
+
+selectKalemlerBySatisId:
+SELECT * FROM SatisKalemi WHERE satisId = :satisId;
+
+insertSatis:
+INSERT INTO Satis(musteriId, musteriAdi, tarih, toplamTutar, odemeTuru)
+VALUES (?, ?, ?, ?, ?);
+
+insertSatisKalemi:
+INSERT INTO SatisKalemi(satisId, urunId, urunAdi, adet, birim, birimFiyat, toplam)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+lastInsertId:
+SELECT last_insert_rowid();
+
+updateUrunStok:
+UPDATE UrunEntity SET stokAdedi = :stokAdedi WHERE id = :id;
+
+
+CREATE TABLE Alis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tedarikciId INTEGER,
+    tedarikciAdi TEXT NOT NULL,
+    tarih TEXT NOT NULL,
+    toplamTutar REAL NOT NULL,
+    odemeTuru TEXT NOT NULL
+);
+
+CREATE TABLE AlisKalemi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet INTEGER NOT NULL,
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+
+selectAllAlis:
+SELECT * FROM Alis ORDER BY id DESC;
+
+selectKalemlerByAlisId:
+SELECT * FROM AlisKalemi WHERE alisId = :alisId;
+
+insertAlis:
+INSERT INTO Alis(tedarikciId, tedarikciAdi, tarih, toplamTutar, odemeTuru)
+VALUES (?, ?, ?, ?, ?);
+
+insertAlisKalemi:
+INSERT INTO AlisKalemi(alisId, urunId, urunAdi, adet, birimFiyat, toplam)
+VALUES (?, ?, ?, ?, ?, ?);
+
+lastInsertIdAlis:
+SELECT last_insert_rowid();
+
+
+CREATE TABLE Masraf (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kategori TEXT NOT NULL,
+    aciklama TEXT NOT NULL,
+    tutar REAL NOT NULL,
+    tarih TEXT NOT NULL,
+    odendiMi INTEGER NOT NULL DEFAULT 0,
+    sonOdemeTarihi TEXT NOT NULL DEFAULT ''
+);
+
+selectAllMasraf:
+SELECT * FROM Masraf ORDER BY id DESC;
+
+insertMasraf:
+INSERT INTO Masraf(kategori, aciklama, tutar, tarih, odendiMi, sonOdemeTarihi)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteMasraf:
+DELETE FROM Masraf WHERE id = ?;
+
+updateMasrafOdemeDurumu:
+UPDATE Masraf SET odendiMi = :odendiMi WHERE id = :id;
+
+
+
+CREATE TABLE StokHareketi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    hareketTuru TEXT NOT NULL,
+    miktar INTEGER NOT NULL,
+    birimFiyat REAL NOT NULL DEFAULT 0.0,
+    aciklama TEXT NOT NULL,
+    tarih TEXT NOT NULL
+);
+
+selectAllStokHareketi:
+SELECT * FROM StokHareketi ORDER BY id DESC;
+
+insertStokHareketi:
+INSERT INTO StokHareketi(urunId, urunAdi, hareketTuru, miktar, birimFiyat, aciklama, tarih)
+VALUES (?, ?, ?, ?, ?, ?, ?);

@@ -4,27 +4,30 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-//  SQLDelight ve Sürücü sınıflarımızı içeri aktarıyoruz
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.DriverFactory
-
+// Hata veren java.time yerine, eski ama altın değerindeki bu importları ekliyoruz:
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge() // Kenardan kenara tam ekran desteğinizi koruduk
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        //  1. Android sistem referansını (applicationContext) vererek SQLite sürücüsünü başlatıyoruz
         val driverFactory = DriverFactory(applicationContext)
         val sqliteDriver = driverFactory.createDriver()
-
-        //  2. Sürücüyü kullanarak gerçek veritabanı nesnemizi oluşturuyoruz
         val database = AppDatabase(sqliteDriver)
 
+        // ─── HER SÜRÜMDE KESİN ÇALIŞAN TÜRKÇE TARİH ───
+        // SimpleDateFormat hem eski sürümleri destekler hem de 'tr' lokaliyle günleri Türkçe yazar.
+        val formatter = SimpleDateFormat("d MMMM, EEEE", Locale("tr"))
+        val androidTarih = formatter.format(Date())
+
         setContent {
-            //  3. Az önce oluşturduğumuz canlı veritabanını App fonksiyonuna paslıyoruz
-            App(database = database)
+
+            App(database = database, guncelTarih = androidTarih)
         }
     }
 }
-

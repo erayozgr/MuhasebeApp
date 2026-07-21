@@ -5,7 +5,10 @@ import com.eray.muhasebeapp.ui.MainStructure
 import com.eray.muhasebeapp.database.shared.AppDatabase
 
 @Composable
-fun App(database: AppDatabase) {
-    // Uygulama başlarken veritabanını ana yapıya emanet ediyor
-    MainStructure(database = database)
+fun App(
+    database: AppDatabase,
+    guncelTarih: String // Bu parametreyi buraya da ekledik
+) {
+    // Aldığımız tarihi MainStructure'a emanet ediyoruz
+    MainStructure(database = database, guncelTarih = guncelTarih)
 }

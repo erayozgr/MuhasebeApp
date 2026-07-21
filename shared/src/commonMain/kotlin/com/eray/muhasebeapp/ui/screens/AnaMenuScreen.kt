@@ -21,6 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import kotlinx.serialization.json.*
+import kotlin.math.roundToInt
 
 // Menü butonları için veri yapısı
 data class MenuButonModel(
@@ -33,27 +38,65 @@ data class MenuButonModel(
 @Composable
 fun AnaMenuScreen(
     database: AppDatabase,
-    onNavigateToUrunler: () -> Unit
+    onNavigateToUrunler: () -> Unit,
+    onNavigateToMusteriler: () -> Unit,
+    onNavigateToTedarikciler: () -> Unit,
+    onNavigateToSatis: () -> Unit,
+    onNavigateToAlis: () -> Unit,
+    onNavigateToMasraf: () -> Unit,
+    onNavigateToRaporlama: () -> Unit,
+    onNavigateToStok: () -> Unit,
+    guncelTarih: String
 ) {
-    // DB'den canlı istatistikler
+    var dolarKuru by remember { mutableStateOf("Yükleniyor...") }
+    var euroKuru by remember { mutableStateOf("Yükleniyor...") }
+
+    LaunchedEffect(Unit) {
+        try {
+            val client = HttpClient()
+            val response = client.get("https://open.er-api.com/v6/latest/USD").bodyAsText()
+
+            val json = Json.parseToJsonElement(response).jsonObject
+            val rates = json["rates"]?.jsonObject
+
+            val tryRate = rates?.get("TRY")?.jsonPrimitive?.doubleOrNull
+            val eurRate = rates?.get("EUR")?.jsonPrimitive?.doubleOrNull
+
+            if (tryRate != null && eurRate != null) {
+                val usdToTry = ((tryRate * 100).roundToInt() / 100.0).toString()
+                val eurToTry = (((tryRate / eurRate) * 100).roundToInt() / 100.0).toString()
+
+                dolarKuru = usdToTry
+                euroKuru = eurToTry
+            }
+        } catch (e: Exception) {
+            dolarKuru = "34.45"
+            euroKuru = "37.12"
+        }
+    }
+
     val urunler = remember { database.appDatabaseQueries.selectAllUrun().executeAsList() }
 
     val toplamUrunSayisi = urunler.size
     val toplamStokDegeri = urunler.sumOf { it.alisFiyati * it.stokAdedi }
     val toplamSatisDegeri = urunler.sumOf { it.satisFiyati * it.stokAdedi }
-    val kritikStoklar = urunler.filter { it.stokAdedi <= 5L }.sortedBy { it.stokAdedi }.take(5)
+
+    // 🎯 DÜZELTME: Kart için tüm kritik stokları sayıyoruz, liste için sadece ilk 5'ini alıyoruz.
+    val tumKritikUrunler = urunler.filter { it.stokAdedi <= 5L }
+    val kritikStoklarGosterim = tumKritikUrunler.sortedBy { it.stokAdedi }.take(5)
+
     val potansiyelKar = toplamSatisDegeri - toplamStokDegeri
 
     // Grid Menü Butonları Listesi
     val menuButonlari = listOf(
-        MenuButonModel("Müşteri", Icons.Default.Person, Color(0xFF007AFF)) {},
-        MenuButonModel("Tedarikçi", Icons.Default.LocalShipping, Color(0xFF5856D6)) {},
-        MenuButonModel("Satış", Icons.Default.TrendingUp, Color(0xFF34C759)) {},
-        MenuButonModel("Alış", Icons.Default.ShoppingBag, Color(0xFFFF9500)) {},
+        MenuButonModel("Müşteri", Icons.Default.Person, Color(0xFF007AFF), onNavigateToMusteriler),
+        MenuButonModel("Tedarikçi", Icons.Default.LocalShipping, Color(0xFF5856D6), onNavigateToTedarikciler),
+        MenuButonModel("Satış", Icons.Default.TrendingUp, Color(0xFF34C759), onNavigateToSatis),
+        MenuButonModel("Alış", Icons.Default.ShoppingBag, Color(0xFFFF9500), onNavigateToAlis),
         MenuButonModel("Ürün", Icons.Default.Inventory, Color(0xFFFF2D55), onNavigateToUrunler),
-        MenuButonModel("Masraf", Icons.Default.Receipt, Color(0xFFFF3B30)) {},
-        MenuButonModel("Raporlama", Icons.Default.BarChart, Color(0xFFAF52DE)) {},
-        MenuButonModel("Stok", Icons.Default.Storage, Color(0xFF5AC8FA)) {}
+        MenuButonModel("Masraf", Icons.Default.Receipt, Color(0xFFFF3B30), onNavigateToMasraf),
+        MenuButonModel("Raporlama", Icons.Default.BarChart, Color(0xFFAF52DE), onNavigateToRaporlama),
+        MenuButonModel("Stok", Icons.Default.Storage, Color(0xFF5AC8FA), onNavigateToStok)
     )
 
     Column(
@@ -62,7 +105,6 @@ fun AnaMenuScreen(
             .background(Color(0xFFF2F2F7))
             .verticalScroll(rememberScrollState())
     ) {
-        // Üst Bar & Karşılama Alanı
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -85,9 +127,12 @@ fun AnaMenuScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // STOK DURUMU
+        DovizVeTarihBari(usd = dolarKuru, eur = euroKuru, tarih = guncelTarih)
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = "STOK DURUMU",
             fontSize = 12.sp,
@@ -112,9 +157,9 @@ fun AnaMenuScreen(
             )
             BuyukStatKart(
                 baslik = "Kritik Stok",
-                deger = "${kritikStoklar.size}",
+                deger = "${tumKritikUrunler.size}", // 🎯 DÜZELTME: Artık gerçek toplam adet yazıyor.
                 altBaslik = "ürün eşikte veya altında",
-                renk = if (kritikStoklar.isNotEmpty()) Color(0xFFFF3B30) else Color(0xFF34C759),
+                renk = if (tumKritikUrunler.isNotEmpty()) Color(0xFFFF3B30) else Color(0xFF34C759),
                 ikon = Icons.Default.Warning,
                 modifier = Modifier.weight(1f).clickable { onNavigateToUrunler() }
             )
@@ -122,7 +167,6 @@ fun AnaMenuScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // MALİ ÖZET
         Text(
             text = "MALİ ÖZET",
             fontSize = 12.sp,
@@ -159,8 +203,7 @@ fun AnaMenuScreen(
             }
         }
 
-        // KRİTİK STOK UYARILARI
-        if (kritikStoklar.isNotEmpty()) {
+        if (tumKritikUrunler.isNotEmpty()) {
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = "KRİTİK STOK UYARILARI",
@@ -176,7 +219,8 @@ fun AnaMenuScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { onNavigateToUrunler() }
             ) {
                 Column {
-                    kritikStoklar.forEachIndexed { index, urun ->
+                    // 🎯 DÜZELTME: Arayüzde listeleme için 5'e sınırlanmış listeyi kullanıyoruz.
+                    kritikStoklarGosterim.forEachIndexed { index, urun ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -203,7 +247,7 @@ fun AnaMenuScreen(
                                 color = Color(0xFFFF3B30)
                             )
                         }
-                        if (index < kritikStoklar.lastIndex) {
+                        if (index < kritikStoklarGosterim.lastIndex) {
                             HorizontalDivider(
                                 color = Color(0xFFF2F2F7),
                                 thickness = 1.dp,
@@ -215,7 +259,6 @@ fun AnaMenuScreen(
             }
         }
 
-        // HIZLI İŞLEMLER (2 Kolonlu Grid Menü)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "HIZLI İŞLEMLER",
@@ -243,9 +286,64 @@ fun AnaMenuScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Alt Bileşen Fonksiyonları (Hataları Çözen Kısım)
-// ─────────────────────────────────────────────────────────────
+@Composable
+fun DovizVeTarihBari(usd: String, eur: String, tarih: String) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(text = "$", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34C759))
+                    Text(text = "₺$usd", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(text = "€", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF007AFF))
+                    Text(text = "₺$eur", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = null,
+                    tint = Color(0xFF8E8E93),
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = tarih,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF8E8E93)
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun MenuButonItem(model: MenuButonModel) {
