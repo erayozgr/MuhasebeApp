@@ -23,7 +23,12 @@ import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.Tedarikci
 import com.eray.muhasebeapp.database.UrunEntity
+import com.eray.muhasebeapp.database.Alis
+import com.eray.muhasebeapp.database.AlisKalemi
 import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.formatTarih
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class AlisSepetKalemi(
     val urun: UrunEntity,
@@ -32,6 +37,12 @@ data class AlisSepetKalemi(
 ) {
     val toplam: Double get() = alisFiyati * adet
 }
+
+// Sepet boşken gösterilen geçmiş alış kaydı (kalemleriyle birlikte)
+data class GecmisAlisKaydi(
+    val alis: Alis,
+    val kalemler: List<AlisKalemi>
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +64,33 @@ fun AlisScreen(
 
     // Sağa kaydırarak geri dönme (Swipe Back) takibi için drag durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+
+    // 🎯 SEPET BOŞKEN GÖSTERİLEN GEÇMİŞ ALIŞLAR (parça parça / kademeli yüklenir)
+    var gecmisTumAlislarHam by remember { mutableStateOf<List<Alis>?>(null) }
+    var gecmisLimit by remember { mutableStateOf(20) }
+    var gecmisAlislar by remember { mutableStateOf(listOf<GecmisAlisKaydi>()) }
+    var gecmisYukleniyor by remember { mutableStateOf(false) }
+    var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
+
+    // Sepet boşaldığında (veya limit arttığında) geçmişi ağır iş parçacığında kademeli yükle
+    LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
+        if (sepet.isEmpty()) {
+            gecmisYukleniyor = true
+            withContext(Dispatchers.Default) {
+                if (gecmisTumAlislarHam == null) {
+                    gecmisTumAlislarHam = database.appDatabaseQueries.selectAllAlis().executeAsList()
+                }
+                val ham = gecmisTumAlislarHam ?: emptyList()
+                val limitli = ham.take(gecmisLimit)
+                gecmisDahaFazlaVar = ham.size > gecmisLimit
+                gecmisAlislar = limitli.map { a ->
+                    val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(a.id).executeAsList()
+                    GecmisAlisKaydi(a, kalemler)
+                }
+            }
+            gecmisYukleniyor = false
+        }
+    }
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
@@ -147,22 +185,68 @@ fun AlisScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "ALINACAK ÜRÜNLER (ALIŞ SEPETİ)",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8E8E93),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
 
             if (sepet.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Sepet boş, ürün eklemek için + tuşuna bas", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                // 🎯 SEPET BOŞ: Geçmiş alışları kademeli (parça parça) göster
+                Text(
+                    text = "GEÇMİŞ ALIŞLAR",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF8E8E93),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+
+                if (gecmisAlislar.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (gecmisYukleniyor) "Yükleniyor..." else "Sepet boş, ürün eklemek için + tuşuna bas",
+                            color = Color(0xFF8E8E93),
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(gecmisAlislar) { kayit ->
+                            GecmisAlisKart(kayit)
+                        }
+                        if (gecmisDahaFazlaVar) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    TextButton(
+                                        onClick = { gecmisLimit += 20 },
+                                        enabled = !gecmisYukleniyor,
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF5856D6))
+                                    ) {
+                                        Text(
+                                            if (gecmisYukleniyor) "Yükleniyor..." else "Daha Fazla Yükle (+20)",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item { Spacer(modifier = Modifier.height(96.dp)) }
+                    }
                 }
             } else {
+                Text(
+                    text = "ALINACAK ÜRÜNLER (ALIŞ SEPETİ)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF8E8E93),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -192,7 +276,6 @@ fun AlisScreen(
                     ) {
                         Text("Maliyet Toplamı", fontSize = 15.sp, color = Color(0xFF3C3C43))
                         Text(
-                            // 🎯 DEĞİŞTİRİLDİ: Genel maliyet toplamı iki basamak yapıldı
                             "₺${formatAlisFiyatiIkiBasamak(toplamTutar)}",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
@@ -211,6 +294,9 @@ fun AlisScreen(
                                 sepet = listOf()
                                 seciliTedarikci = null
                                 basariliMesajGoster = true
+                                // Yeni alış eklendiği için geçmiş listesi bir dahaki gösterimde tazelensin
+                                gecmisTumAlislarHam = null
+                                gecmisLimit = 20
                             }
                         },
                         enabled = sepet.isNotEmpty(),
@@ -263,14 +349,6 @@ fun AlisScreen(
     }
 }
 
-private fun satisiTamamla(
-    database: AppDatabase,
-    sepet: List<AlisSepetKalemi>,
-    tedarikci: Tedarikci?
-) {
-    // Eğer projede çağrılan bu satisiTamamla yerine alisiTamamla kullanılıyorsa, alisiTamamla çağrısını koruyoruz.
-}
-
 private fun alisiTamamla(
     database: AppDatabase,
     sepet: List<AlisSepetKalemi>,
@@ -307,7 +385,6 @@ private fun alisiTamamla(
     }
 }
 
-// 🎯 ÇAKIŞMALARI ENGELLEMEK İÇİN YARDIMCI BİLEŞENLERE PRIVATE EKLENMİŞTİR
 @Composable
 private fun AlisSepetKart(kalem: AlisSepetKalemi, onSil: () -> Unit) {
     Card(
@@ -324,7 +401,6 @@ private fun AlisSepetKart(kalem: AlisSepetKalemi, onSil: () -> Unit) {
             Column {
                 Text(kalem.urun.ad, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
                 Text(
-                    // 🎯 DEĞİŞTİRİLDİ: Sepet içindeki tekil alış maliyeti formatlandı
                     "${kalem.adet} ${kalem.urun.birim} × ₺${formatAlisFiyatiIkiBasamak(kalem.alisFiyati)}",
                     fontSize = 13.sp,
                     color = Color(0xFF8E8E93)
@@ -335,6 +411,47 @@ private fun AlisSepetKart(kalem: AlisSepetKalemi, onSil: () -> Unit) {
                 IconButton(onClick = onSil, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color(0xFFFF3B30))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GecmisAlisKart(kayit: GecmisAlisKaydi) {
+    val urunListesi = kayit.kalemler.joinToString(", ") { "${it.urunAdi} x${it.adet}" }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier.size(36.dp).background(Color(0xFFFF9500).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color(0xFFFF9500))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(kayit.alis.tedarikciAdi, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                if (urunListesi.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(urunListesi, fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 16.sp)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "₺${formatAlisFiyatiIkiBasamak(kayit.alis.toplamTutar)}",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFF9500)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(formatTarih(kayit.alis.tarih), fontSize = 11.sp, color = Color(0xFF8E8E93))
             }
         }
     }
@@ -375,7 +492,6 @@ private fun AlisUrunSecDialog(
                         onDismissRequest = { dropdownAcikMi = false }
                     ) {
                         urunler.forEach { urun ->
-                            // 🎯 DEĞİŞTİRİLDİ: Açılır menü listesindeki öneri fiyatı iki basamak yapıldı
                             DropdownMenuItem(
                                 text = { Text("${urun.ad} (Mevcut Stok: ${urun.stokAdedi} • ₺${formatAlisFiyatiIkiBasamak(urun.alisFiyati)})") },
                                 onClick = {
@@ -412,7 +528,6 @@ private fun AlisUrunSecDialog(
                 )
 
                 seciliUrun?.let {
-                    // 🎯 DEĞİŞTİRİLDİ: Bilgilendirme alt metnindeki maliyet değeri iki basamak yapıldı
                     Text(
                         text = "Mevcut Depo Stoku: ${it.stokAdedi} ${it.birim} | Kayıtlı Alış Maliyeti: ₺${formatAlisFiyatiIkiBasamak(it.alisFiyati)}",
                         fontSize = 12.sp,
@@ -426,7 +541,10 @@ private fun AlisUrunSecDialog(
                 val urun = seciliUrun
 
                 val adet = if (adetText.isBlank()) 1 else (adetText.toIntOrNull() ?: 0)
-                val girilenFiyat = if (fiyatText.isBlank()) (urun?.alisFiyati ?: 0.0) else (fiyatText.toDoubleOrNull() ?: 0.0)
+
+                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
+                val temizFiyatText = fiyatText.replace(',', '.')
+                val girilenFiyat = if (temizFiyatText.isBlank()) (urun?.alisFiyati ?: 0.0) else (temizFiyatText.toDoubleOrNull() ?: 0.0)
 
                 if (urun != null && adet > 0 && girilenFiyat > 0.0) {
                     onEkle(urun, adet, girilenFiyat)
@@ -439,7 +557,6 @@ private fun AlisUrunSecDialog(
     )
 }
 
-// KMP uyumlu, kuruş hassasiyetini virgülden sonra net 2 basamağa sabitleyen yardımcı fonksiyon
 private fun formatAlisFiyatiIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger

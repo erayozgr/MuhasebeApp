@@ -200,7 +200,6 @@ fun MasrafScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 🎯 DEĞİŞTİRİLDİ: Toplam masraf virgülden sonra iki basamak yapıldı
                 MasrafOzetKart("Toplam", "₺${formatMasrafIkiBasamak(toplamMasraf)}", Color(0xFFFF3B30), Modifier.weight(1f))
                 MasrafOzetKart("İşlem Sayısı", "$islemSayisi", Color(0xFF8E8E93), Modifier.weight(1f))
             }
@@ -325,7 +324,6 @@ fun MasrafScreen(
     }
 }
 
-// 🎯 ÇAKIŞMALARI ENGELLEMEK İÇİN YARDIMCI BİLEŞENLERE PRIVATE EKLENDİ
 @Composable
 private fun KategoriFiltreCip(baslik: String, seciliMi: Boolean, onClick: () -> Unit) {
     Box(
@@ -382,7 +380,6 @@ private fun MasrafKart(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // 🎯 DEĞİŞTİRİLDİ: Tekil masraf kartı tutarı iki basamak yapıldı
                 Text("₺${formatMasrafIkiBasamak(masraf.tutar)}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF3B30))
                 IconButton(onClick = onSil, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color(0xFFFF3B30))
@@ -456,7 +453,9 @@ private fun MasrafEkleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val tutar = tutarText.toDoubleOrNull() ?: 0.0
+                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
+                val temizTutarText = tutarText.replace(',', '.')
+                val tutar = temizTutarText.toDoubleOrNull() ?: 0.0
                 if (tutar <= 0) return@TextButton
                 onKaydet(seciliKategori, aciklama.ifBlank { seciliKategori }, tutar)
             }) { Text("Kaydet", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold) }
@@ -483,7 +482,6 @@ private fun MasrafOzetKart(baslik: String, deger: String, renk: Color, modifier:
     }
 }
 
-// 🎯 KMP UYUMLU VE SAPMASIZ PARASAL BİÇİMLENDİRİCİ
 private fun formatMasrafIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger

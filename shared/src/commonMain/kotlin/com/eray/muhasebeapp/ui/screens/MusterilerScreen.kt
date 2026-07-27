@@ -121,7 +121,6 @@ fun MusterilerScreen(
                         Text("Toplam Müşteri Borcu", fontSize = 13.sp, color = Color(0xFF8E8E93))
                         val toplamBakiye = musteriler.sumOf { it.bakiye }
                         Text(
-                            // 🎯 DEĞİŞTİRİLDİ: Toplam borç virgülden sonra net iki basamak olarak biçimlendirildi
                             "₺${formatMusteriCariIkiBasamak(toplamBakiye)}",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
@@ -467,7 +466,9 @@ fun TahsilatGirDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val tutar = tutarText.toDoubleOrNull() ?: 0.0
+                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
+                val temizTutarText = tutarText.replace(',', '.')
+                val tutar = temizTutarText.toDoubleOrNull() ?: 0.0
                 if (tutar > 0.0) {
                     onKaydet(tutar)
                 }
@@ -767,6 +768,7 @@ fun MusteriEkleDialog(
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcu (₺)") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -774,7 +776,9 @@ fun MusteriEkleDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (ad.isNotBlank()) {
-                    onKaydet(ad, telefon, adres, bakiye.toDoubleOrNull() ?: 0.0)
+                    // 🎯 iOS klavyesinden gelebilecek virgül riskini ekarte ediyoruz
+                    val temizBakiyeText = bakiye.replace(',', '.')
+                    onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
                 }
             }) { Text("Kaydet", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
         },
@@ -866,7 +870,9 @@ fun BakiyeDuzenleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val yeniBakiye = yeniBakiyeText.toDoubleOrNull()
+                // 🎯 Hem eksi değerleri koruyor hem de iOS virgülerini noktaya dönüştürüyoruz
+                val temizBakiyeText = yeniBakiyeText.replace(',', '.')
+                val yeniBakiye = temizBakiyeText.toDoubleOrNull()
                 if (yeniBakiye != null) {
                     onKaydet(yeniBakiye)
                 }
@@ -893,7 +899,6 @@ fun formatSaat(epochMillisStr: String): String {
     return "$saat:$dakika"
 }
 
-//  YENİ EKLEDİ / KMP UYUMLU: Bakiyeleri virgülden sonra net 2 basamak formatlar
 private fun formatMusteriCariIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger

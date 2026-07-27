@@ -60,7 +60,6 @@ fun TedarikcilerScreen(
     var raporTedarikci by remember { mutableStateOf<Tedarikci?>(null) }
     var silinecekTedarikci by remember { mutableStateOf<Tedarikci?>(null) }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
     Scaffold(
@@ -215,7 +214,16 @@ fun TedarikcilerScreen(
             tedarikci = tedarikci,
             onDismiss = { odemeTedarikci = null },
             onKaydet = { odemeTutari ->
-                database.appDatabaseQueries.updateTedarikciBakiye(tedarikci.bakiye - odemeTutari, tedarikci.id)
+                // 🎯 ÖDEME YAPILDIĞINDA RAPORLAMAYA DÜŞMESİ İÇİN KRONOLOJİK LOGLAMA YAPILIYOR
+                database.appDatabaseQueries.transaction {
+                    database.appDatabaseQueries.updateTedarikciBakiye(tedarikci.bakiye - odemeTutari, tedarikci.id)
+                    database.appDatabaseQueries.insertTedarikciOdemesi(
+                        tedarikciId = tedarikci.id,
+                        tedarikciAdi = tedarikci.ad,
+                        tutar = odemeTutari,
+                        tarih = com.eray.muhasebeapp.getEpochMillis().toString()
+                    )
+                }
                 yenilemeTetikleyici++
                 odemeTedarikci = null
             }
@@ -441,7 +449,6 @@ fun TedarikciOdemeGirDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 Text("${tedarikci.ad} firmasına nakit/havale ödeme yapıyorsunuz.", fontSize = 13.sp, color = Color(0xFF8E8E93))
-                // 🎯 DÜZELTİLDİ: Rengin düzgün çözülmesi için color = Color.Black yapıldı
                 Text("Güncel Borcumuz: ₺${formatTedarikciCariIkiBasamak(tedarikci.bakiye)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                 OutlinedTextField(
                     value = tutarText,
@@ -455,7 +462,8 @@ fun TedarikciOdemeGirDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val tutar = tutarText.toDoubleOrNull() ?: 0.0
+                val temizTutarText = tutarText.replace(',', '.')
+                val tutar = temizTutarText.toDoubleOrNull() ?: 0.0
                 if (tutar > 0.0) {
                     onKaydet(tutar)
                 }
@@ -569,7 +577,6 @@ fun TarihAralikliAlisRaporDialog(
                             }
                             items(alislarListesi) { alis ->
                                 val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList()
-                                // 🎯 DÜZELTİLDİ: Çakışma önlenmiş yeni saat fonksiyonuyla çağrılıyor
                                 val alisSaati = formatTedarikciSaat(alis.tarih)
 
                                 Column(
@@ -758,7 +765,7 @@ fun TedarikciEkleDialog(
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcumuz (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -766,7 +773,8 @@ fun TedarikciEkleDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (ad.isNotBlank()) {
-                    onKaydet(ad, telefon, adres, bakiye.toDoubleOrNull() ?: 0.0)
+                    val temizBakiyeText = bakiye.replace(',', '.')
+                    onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
                 }
             }) { Text("Kaydet", color = Color(0xFF5856D6), fontWeight = FontWeight.SemiBold) }
         },
@@ -840,7 +848,6 @@ fun TedarikciBakiyeDuzenleDialog(
                     onValueChange = { yeniBakiyeText = it },
                     label = { Text("Yeni Net Borç Tutarı (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
@@ -852,7 +859,8 @@ fun TedarikciBakiyeDuzenleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val yeniBakiye = yeniBakiyeText.toDoubleOrNull()
+                val temizBakiyeText = yeniBakiyeText.replace(',', '.')
+                val yeniBakiye = temizBakiyeText.toDoubleOrNull()
                 if (yeniBakiye != null) {
                     onKaydet(yeniBakiye)
                 }
@@ -864,7 +872,6 @@ fun TedarikciBakiyeDuzenleDialog(
     )
 }
 
-// 🎯 ÇAKIŞMAYI ÖNLEMEK İÇİN DOSYAYA ÖZEL AD VERİLDİ VE PRIVATE YAPILDI
 private fun formatTedarikciSaat(epochMillisStr: String): String {
     val millis = epochMillisStr.toLongOrNull() ?: return ""
 

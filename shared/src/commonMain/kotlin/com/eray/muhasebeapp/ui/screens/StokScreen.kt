@@ -83,7 +83,7 @@ fun StokScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // ÜST ÖZET KARTLARI (🎯 DÜZELTİLDİ: Çakışmayan yeni isimle çağrılıyor)
+            // ÜST ÖZET KARTLARI
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -263,6 +263,8 @@ private fun StokDuzenleDialog(
                     onValueChange = { miktarText = it },
                     label = { Text("Miktar") },
                     singleLine = true,
+                    // 🎯 Sayısal klavyeyi aktif ediyoruz
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -277,7 +279,12 @@ private fun StokDuzenleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val miktar = miktarText.toIntOrNull() ?: 0
+                // 🎯 iOS Sayı Klavyesinden gelebilecek kazara virgül ya da kopyalama hatalarını önlemek için temizliyoruz
+                val temizMiktarText = miktarText.replace(',', '.')
+
+                // Double olarak parse edip integer'a yuvarlıyoruz (Örn: 10.0 veya 10.5 yazılırsa çökmeden 10 yapar)
+                val miktar = temizMiktarText.toDoubleOrNull()?.toInt() ?: temizMiktarText.toIntOrNull() ?: 0
+
                 if (miktar > 0) {
                     onKaydet(hareketTuru, miktar, aciklama)
                 }
@@ -313,7 +320,6 @@ private fun HareketTuruButon(
     }
 }
 
-//  ÇAKIŞMAYI ENGELLEMEK İÇİN İSMİ DEĞİŞTİRİLDİ VE PRIVATE YAPILDI
 @Composable
 private fun StokOzetKart(baslik: String, deger: String, renk: Color, modifier: Modifier = Modifier) {
     Card(

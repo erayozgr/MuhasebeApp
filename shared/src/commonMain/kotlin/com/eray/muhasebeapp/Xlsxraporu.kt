@@ -6,7 +6,8 @@ import com.eray.muhasebeapp.database.Satis
 import com.eray.muhasebeapp.database.StokHareketi
 import com.eray.muhasebeapp.database.SatisKalemi
 import com.eray.muhasebeapp.database.AlisKalemi
-import com.eray.muhasebeapp.database.Tahsilat // 🌟 Eklendi
+import com.eray.muhasebeapp.database.Tahsilat
+import com.eray.muhasebeapp.database.TedarikciOdemesi
 
 fun excelXlsxOlustur(
     satislar: List<Satis>,
@@ -14,6 +15,7 @@ fun excelXlsxOlustur(
     masraflar: List<Masraf>,
     stokHareketleri: List<StokHareketi> = emptyList(),
     tahsilatlar: List<Tahsilat> = emptyList(),
+    tedarikciOdemeleri: List<TedarikciOdemesi> = emptyList(),
     raporTuru: String = "Genel Rapor",
     satisKalemleriGetir: (Long) -> List<SatisKalemi> = { emptyList() },
     alisKalemleriGetir: (Long) -> List<AlisKalemi> = { emptyList() },
@@ -22,13 +24,14 @@ fun excelXlsxOlustur(
 ): ByteArray  {
     val toplamSatis = satislar.sumOf { it.toplamTutar }
     val toplamAlis = alislar.sumOf { it.toplamTutar }
-    val toplamMasraf = masraflar.sumOf { it.tutar } // 🌟 odendiMi kaldırıldığı için direkt toplam alındı
+    val toplamMasraf = masraflar.sumOf { it.tutar }
     val brutKar = toplamSatis - toplamAlis
-    val netKar = toplamSatis - toplamAlis - toplamMasraf // 🌟 Net kar toplam masrafa göre güncellendi
+    val netKar = toplamSatis - toplamAlis - toplamMasraf
     val ortalamaSatis = if (satislar.isNotEmpty()) toplamSatis / satislar.size else 0.0
     val ortalamaAlis = if (alislar.isNotEmpty()) toplamAlis / alislar.size else 0.0
     val toplamStokTutari = stokHareketleri.sumOf { it.birimFiyat * it.miktar }
     val toplamTahsilat = tahsilatlar.sumOf { it.tutar }
+    val toplamOdeme = tedarikciOdemeleri.sumOf { it.tutar }
 
     fun ozetSheet(): String = SheetBuilder().apply {
         row(Cell.Text("Muhasebe Raporu - Ozet", S_TITLE))
@@ -36,7 +39,9 @@ fun excelXlsxOlustur(
         row(Cell.Text("Toplam Satis", S_LABEL), Cell.Num(toplamSatis, S_CURRENCY))
         row(Cell.Text("Toplam Alis", S_LABEL), Cell.Num(toplamAlis, S_CURRENCY))
         row(Cell.Text("Toplam Tahsilat (Nakit Girişi)", S_LABEL), Cell.Num(toplamTahsilat, S_CURRENCY))
-        row(Cell.Text("Toplam Masraf", S_LABEL), Cell.Num(toplamMasraf, S_CURRENCY)) // 🌟 Ödenen/bekleyen satırları temizlendi
+        // 🎯 Excel bölgesel ayar hatasını ezmek için Ozet sayfasındaki Toplam Ödeme de güvenli metne dönüştürüldü
+        row(Cell.Text("Toplam Tedarikçi Ödemesi (Nakit Çıkışı)", S_LABEL), Cell.Text(formatExcelPara(toplamOdeme), S_CURRENCY))
+        row(Cell.Text("Toplam Masraf", S_LABEL), Cell.Num(toplamMasraf, S_CURRENCY))
         row(Cell.Text("Brut Kar (Satis - Alis)", S_LABEL), Cell.Num(brutKar, S_CURRENCY))
         blank()
         row(Cell.Text("Net Kar / Zarar (Nakit)", S_TOTAL_LABEL), Cell.Num(netKar, S_TOTAL_CURRENCY))
@@ -44,6 +49,7 @@ fun excelXlsxOlustur(
         row(Cell.Text("Satis Adedi", S_LABEL), Cell.Num(satislar.size.toDouble()))
         row(Cell.Text("Alis Adedi", S_LABEL), Cell.Num(alislar.size.toDouble()))
         row(Cell.Text("Tahsilat Adedi", S_LABEL), Cell.Num(tahsilatlar.size.toDouble()))
+        row(Cell.Text("Tedarikçi Ödemesi Adedi", S_LABEL), Cell.Num(tedarikciOdemeleri.size.toDouble()))
         row(Cell.Text("Masraf Adedi", S_LABEL), Cell.Num(masraflar.size.toDouble()))
         row(Cell.Text("Stok Hareketi Adedi", S_LABEL), Cell.Num(stokHareketleri.size.toDouble()))
         row(Cell.Text("Ortalama Satis Tutari", S_LABEL), Cell.Num(ortalamaSatis, S_CURRENCY))
@@ -114,7 +120,6 @@ fun excelXlsxOlustur(
     }.xml()
 
     fun masraflarSheet(): String = SheetBuilder().apply {
-        // 🌟 Durum ve Son Ödeme Tarihi sütunları kaldırıldı, şemaya uygun 4 sütuna düşürüldü
         row(
             Cell.Text("Tarih", S_HEADER), Cell.Text("Kategori", S_HEADER),
             Cell.Text("Aciklama", S_HEADER), Cell.Text("Tutar", S_HEADER)
@@ -173,6 +178,25 @@ fun excelXlsxOlustur(
         )
     }.xml()
 
+    fun tedarikciOdemeleriSheet(): String = SheetBuilder().apply {
+        row(
+            Cell.Text("Tarih", S_HEADER), Cell.Text("Tedarikci", S_HEADER), Cell.Text("Odenen Tutar", S_HEADER)
+        )
+        tedarikciOdemeleri.forEach { o ->
+            row(
+                Cell.Text(formatTarih(o.tarih)),
+                Cell.Text(o.tedarikciAdi),
+                // 🎯 DÜZELTİLDİ: Boş görünme hatasını engellemek için Cell.Num yerine Cell.Text yapıldı
+                Cell.Text(formatExcelPara(o.tutar), S_CURRENCY)
+            )
+        }
+        row(
+            Cell.Text("TOPLAM", S_TOTAL_LABEL), Cell.Text("", S_TOTAL_LABEL),
+            // 🎯 DÜZELTİLDİ: Alt toplam hücresinin boş kalma hatasını engellemek için Cell.Text yapıldı
+            Cell.Text(formatExcelPara(toplamOdeme), S_TOTAL_CURRENCY)
+        )
+    }.xml()
+
     val sayfalar: List<Pair<String, String>> = when (raporTuru) {
         "Satış Raporu" -> listOf("Satislar" to satislarSheetDetayli())
         "Alış Raporu" -> listOf("Alislar" to alislarSheetDetayli())
@@ -185,14 +209,24 @@ fun excelXlsxOlustur(
             "Alislar" to alislarSheetDetayli(),
             "Masraflar" to masraflarSheet(),
             "Stok Hareketleri" to stokSheet(),
-            "Tahsilatlar" to tahsilatlarSheet()
+            "Tahsilatlar" to tahsilatlarSheet(),
+            "Tedarikci Odemeleri" to tedarikciOdemeleriSheet()
         )
     }
 
     return buildXlsx(sayfalar)
 }
 
-// ... Geri kalan private build fonksiyonları ve sınıflar aynen korunmuştur ...
+//  KMP UYUMLU VE EXCEL'İN LOKAL AYARLARINA TAKILMAYAN METİNSEL PARA FORMATLAYICI
+private fun formatExcelPara(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlakDeger = if (negatifMi) -deger else deger
+    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
+    val tamKisim = yuvarlanmis.toLong()
+    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
+    val kesirStr = kesirKisim.toString().padStart(2, '0')
+    return "${if (negatifMi) "-" else ""}₺$tamKisim.$kesirStr"
+}
 
 private fun buildXlsx(sayfalar: List<Pair<String, String>>): ByteArray {
     val sheetEntries = sayfalar.mapIndexed { index, (_, dataXml) ->

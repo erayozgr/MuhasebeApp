@@ -443,11 +443,16 @@ private fun UrunFormDialog(
                         adHata = true
                         return@Button
                     }
+
+                    // 🎯 iOS Sayı Klavyesinden gelen virgülleri (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
+                    val temizAlisText = alis.replace(',', '.')
+                    val temizSatisText = satis.replace(',', '.')
+
                     onKaydet(
                         barkod,
                         ad,
-                        alis.toDoubleOrNull() ?: 0.0,
-                        satis.toDoubleOrNull() ?: 0.0,
+                        temizAlisText.toDoubleOrNull() ?: 0.0,
+                        temizSatisText.toDoubleOrNull() ?: 0.0,
                         stok.toLongOrNull() ?: 0L,
                         birim,
                         kdv.toLongOrNull() ?: 20L
@@ -464,7 +469,6 @@ private fun UrunFormDialog(
     )
 }
 
-// 🎯 ÇAKIŞMAYI ÖNLEMEK İÇİN İSMİ DEĞİŞTİRİLDİ VE PRIVATE YAPILDI
 @Composable
 private fun UrunOzetKart(
     baslik: String,

@@ -21,7 +21,12 @@ import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.Musteri
 import com.eray.muhasebeapp.database.UrunEntity
+import com.eray.muhasebeapp.database.Satis
+import com.eray.muhasebeapp.database.SatisKalemi
 import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.formatTarih
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class SepetKalemi(
     val urun: UrunEntity,
@@ -30,6 +35,12 @@ data class SepetKalemi(
 ) {
     val toplam: Double get() = satisFiyati * adet
 }
+
+// Sepet boşken gösterilen geçmiş satış kaydı (kalemleriyle birlikte)
+data class GecmisSatisKaydi(
+    val satis: Satis,
+    val kalemler: List<SatisKalemi>
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +62,33 @@ fun SatisScreen(
 
     // Sağa kaydırarak geri dönme (Swipe Back) takibi için drag durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+
+    // 🎯 SEPET BOŞKEN GÖSTERİLEN GEÇMİŞ SATIŞLAR (parça parça / kademeli yüklenir)
+    var gecmisTumSatislarHam by remember { mutableStateOf<List<Satis>?>(null) }
+    var gecmisLimit by remember { mutableStateOf(20) }
+    var gecmisSatislar by remember { mutableStateOf(listOf<GecmisSatisKaydi>()) }
+    var gecmisYukleniyor by remember { mutableStateOf(false) }
+    var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
+
+    // Sepet boşaldığında (veya limit arttığında) geçmişi ağır iş parçacığında kademeli yükle
+    LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
+        if (sepet.isEmpty()) {
+            gecmisYukleniyor = true
+            withContext(Dispatchers.Default) {
+                if (gecmisTumSatislarHam == null) {
+                    gecmisTumSatislarHam = database.appDatabaseQueries.selectAllSatis().executeAsList()
+                }
+                val ham = gecmisTumSatislarHam ?: emptyList()
+                val limitli = ham.take(gecmisLimit)
+                gecmisDahaFazlaVar = ham.size > gecmisLimit
+                gecmisSatislar = limitli.map { s ->
+                    val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(s.id).executeAsList()
+                    GecmisSatisKaydi(s, kalemler)
+                }
+            }
+            gecmisYukleniyor = false
+        }
+    }
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
@@ -145,22 +183,68 @@ fun SatisScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "SEPET",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8E8E93),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
 
             if (sepet.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Sepet boş, ürün eklemek için + tuşuna bas", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                // 🎯 SEPET BOŞ: Geçmiş satışları kademeli (parça parça) göster
+                Text(
+                    text = "GEÇMİŞ SATIŞLAR",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF8E8E93),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+
+                if (gecmisSatislar.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (gecmisYukleniyor) "Yükleniyor..." else "Sepet boş, ürün eklemek için + tuşuna bas",
+                            color = Color(0xFF8E8E93),
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(gecmisSatislar) { kayit ->
+                            GecmisSatisKart(kayit)
+                        }
+                        if (gecmisDahaFazlaVar) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    TextButton(
+                                        onClick = { gecmisLimit += 20 },
+                                        enabled = !gecmisYukleniyor,
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF007AFF))
+                                    ) {
+                                        Text(
+                                            if (gecmisYukleniyor) "Yükleniyor..." else "Daha Fazla Yükle (+20)",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item { Spacer(modifier = Modifier.height(88.dp)) }
+                    }
                 }
             } else {
+                Text(
+                    text = "SEPET",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF8E8E93),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -207,6 +291,9 @@ fun SatisScreen(
                                 sepet = listOf()
                                 seciliMusteri = null
                                 basariliMesajGoster = true
+                                // Yeni satış eklendiği için geçmiş listesi bir dahaki gösterimde tazelensin
+                                gecmisTumSatislarHam = null
+                                gecmisLimit = 20
                             }
                         },
                         enabled = sepet.isNotEmpty(),
@@ -295,7 +382,6 @@ private fun satisiTamamla(
     }
 }
 
-// 🎯 ÇAKIŞMALARI ENGELLEMEK İÇİN YARDIMCI BİLEŞENLERE PRIVATE EKLENDİ
 @Composable
 private fun SepetKalemKart(kalem: SepetKalemi, onSil: () -> Unit) {
     Card(
@@ -322,6 +408,47 @@ private fun SepetKalemKart(kalem: SepetKalemi, onSil: () -> Unit) {
                 IconButton(onClick = onSil, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color(0xFFFF3B30))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GecmisSatisKart(kayit: GecmisSatisKaydi) {
+    val urunListesi = kayit.kalemler.joinToString(", ") { "${it.urunAdi} x${it.adet}" }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier.size(36.dp).background(Color(0xFF34C759).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF34C759))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(kayit.satis.musteriAdi, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                if (urunListesi.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(urunListesi, fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 16.sp)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "₺${formatSatisFiyatiIkiBasamak(kayit.satis.toplamTutar)}",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF34C759)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(formatTarih(kayit.satis.tarih), fontSize = 11.sp, color = Color(0xFF8E8E93))
             }
         }
     }
@@ -419,7 +546,10 @@ private fun UrunSecDialog(
                 val urun = seciliUrun
 
                 val adet = if (adetText.isBlank()) 1 else (adetText.toIntOrNull() ?: 0)
-                val girilenFiyat = if (fiyatText.isBlank()) (urun?.satisFiyati ?: 0.0) else (fiyatText.toDoubleOrNull() ?: 0.0)
+
+                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
+                val temizFiyatText = fiyatText.replace(',', '.')
+                val girilenFiyat = if (temizFiyatText.isBlank()) (urun?.satisFiyati ?: 0.0) else (temizFiyatText.toDoubleOrNull() ?: 0.0)
 
                 if (urun != null && adet > 0 && adet <= kalanStok && girilenFiyat > 0.0) {
                     onEkle(urun, adet, girilenFiyat)
@@ -432,7 +562,6 @@ private fun UrunSecDialog(
     )
 }
 
-// KMP uyumlu, kuruş hassasiyetini virgülden sonra net 2 basamağa sabitleyen yardımcı fonksiyon
 private fun formatSatisFiyatiIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger

@@ -117,6 +117,8 @@ fun RaporlamaScreen(
     var toplamSatis by remember { mutableStateOf(0.0) }
     var toplamAlis by remember { mutableStateOf(0.0) }
     var toplamMasraf by remember { mutableStateOf(0.0) }
+    var toplamTahsilat by remember { mutableStateOf(0.0) } // 🎯 Eklendi
+    var toplamOdeme by remember { mutableStateOf(0.0) }    // 🎯 Eklendi
     var netKar by remember { mutableStateOf(0.0) }
     var islemSayisi by remember { mutableStateOf(0) }
     var ortalamaSatisTutari by remember { mutableStateOf(0.0) }
@@ -126,11 +128,10 @@ fun RaporlamaScreen(
     var tumMasraflarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Masraf>>(emptyList()) }
     var tumStoklarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.StokHareketi>>(emptyList()) }
     var tumTahsilatlarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Tahsilat>>(emptyList()) }
+    var tumOdemelerHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.TedarikciOdemesi>>(emptyList()) }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    // Dönem veya Limit değiştiğinde tetiklenen AĞIR İŞ PARÇACIĞI (Dispatchers.Default)
     LaunchedEffect(seciliDonem, mevcutLimit) {
         yukleniyor = true
         withContext(Dispatchers.Default) {
@@ -142,16 +143,20 @@ fun RaporlamaScreen(
                 if (tumMasraflarHam.isEmpty()) tumMasraflarHam = database.appDatabaseQueries.selectAllMasraf().executeAsList()
                 if (tumStoklarHam.isEmpty()) tumStoklarHam = database.appDatabaseQueries.selectAllStokHareketi().executeAsList()
                 if (tumTahsilatlarHam.isEmpty()) tumTahsilatlarHam = database.appDatabaseQueries.selectAllTahsilat().executeAsList()
+                if (tumOdemelerHam.isEmpty()) tumOdemelerHam = database.appDatabaseQueries.selectAllTedarikciOdemesi().executeAsList()
 
                 val satislarFiltreli = tumSatislarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
                 val alislarFiltreli = tumAlislarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
                 val masraflarFiltreli = tumMasraflarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
                 val stokHareketleriFiltreli = tumStoklarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
                 val tahsilatlarFiltreli = tumTahsilatlarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
+                val odemelerFiltreli = tumOdemelerHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
 
                 toplamSatis = satislarFiltreli.sumOf { it.toplamTutar }
                 toplamAlis = alislarFiltreli.sumOf { it.toplamTutar }
                 toplamMasraf = masraflarFiltreli.sumOf { it.tutar }
+                toplamTahsilat = tahsilatlarFiltreli.sumOf { it.tutar } // 🎯 Eklendi
+                toplamOdeme = odemelerFiltreli.sumOf { it.tutar }       // 🎯 Eklendi
                 netKar = toplamSatis - toplamAlis - toplamMasraf
                 islemSayisi = satislarFiltreli.size
                 ortalamaSatisTutari = if (islemSayisi > 0) toplamSatis / islemSayisi else 0.0
@@ -160,7 +165,8 @@ fun RaporlamaScreen(
                         alislarFiltreli.map { HafifIslem.A(it) } +
                         masraflarFiltreli.map { HafifIslem.M(it) } +
                         stokHareketleriFiltreli.map { HafifIslem.St(it) } +
-                        tahsilatlarFiltreli.map { HafifIslem.T(it) })
+                        tahsilatlarFiltreli.map { HafifIslem.T(it) } +
+                        odemelerFiltreli.map { HafifIslem.O(it) })
                     .sortedByDescending { it.tarih.toLongOrNull() ?: 0L }
 
                 val limitliHafifList = hafifList.take(mevcutLimit)
@@ -178,6 +184,7 @@ fun RaporlamaScreen(
                         is HafifIslem.M -> IslemKaydi.MasrafIslemi(hafif.masraf)
                         is HafifIslem.St -> IslemKaydi.StokIslemi(hafif.stok)
                         is HafifIslem.T -> IslemKaydi.TahsilatIslemi(hafif.tahsilat)
+                        is HafifIslem.O -> IslemKaydi.TedarikciOdemeIslemi(hafif.odeme)
                     }
                 }
 
@@ -202,7 +209,6 @@ fun RaporlamaScreen(
         return
     }
 
-    // 🎯 DÜZELTİLDİ: gruplanmisMasraflar yerine sayfanın kendi verisi olan gruplanmisIslemler kontrol ediliyor
     if (yukleniyor && gruplanmisIslemler.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Color(0xFF007AFF))
@@ -282,6 +288,17 @@ fun RaporlamaScreen(
                 ) {
                     RaporOzetKart("Satış (Ciro)", "₺${formatRaporIkiBasamak(toplamSatis)}", Color(0xFF34C759), Modifier.weight(1f))
                     RaporOzetKart("Alış", "₺${formatRaporIkiBasamak(toplamAlis)}", Color(0xFFFF9500), Modifier.weight(1f))
+                }
+            }
+
+            // 🎯 YENİ EKLEDİ: Ekranda nakit akışını takip etmek için Tahsilat ve Ödeme satırı eklendi
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    RaporOzetKart("Müşteri Tahsilatı", "₺${formatRaporIkiBasamak(toplamTahsilat)}", Color(0xFF34C759), Modifier.weight(1f))
+                    RaporOzetKart("Tedarikçi Ödemesi", "₺${formatRaporIkiBasamak(toplamOdeme)}", Color(0xFFFF3B30), Modifier.weight(1f))
                 }
             }
 
@@ -414,12 +431,22 @@ fun RaporlamaScreen(
                     uyar && musteriUyar && (raporTuru == "Genel Rapor" || raporTuru == "Tahsilat Raporu")
                 }
 
+                // Excel modülü için filtrelenmiş tedarikçi ödemeleri hazılanıyor
+                val filteredOdemeler = tumOdemelerHam.filter {
+                    val t = it.tarih.toLongOrNull() ?: 0L
+                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                    val tedarikciUyar = seciliTedarikciId?.let { id -> it.tedarikciId == id } ?: true
+                    uyar && tedarikciUyar && (raporTuru == "Genel Rapor" || raporTuru == "Alış Raporu")
+                }
+
+                // 🎯 DÜZELTİLDİ: Artık Excel oluşturucuya filteredOdemeler listesi güvenle gönderiliyor.
                 val bytes = excelXlsxOlustur(
                     satislar = filteredSatislar,
                     alislar = filteredAlislar,
                     masraflar = filteredMasraflar,
                     stokHareketleri = filteredStoklar,
                     tahsilatlar = filteredTahsilatlar,
+                    tedarikciOdemeleri = filteredOdemeler, // 🚀 Eksik olan parametre bağlandı!
                     raporTuru = raporTuru,
                     satisKalemleriGetir = { satisId -> database.appDatabaseQueries.selectKalemlerBySatisId(satisId).executeAsList() },
                     alisKalemleriGetir = { alisId -> database.appDatabaseQueries.selectKalemlerByAlisId(alisId).executeAsList() }
@@ -740,6 +767,13 @@ private fun IslemKart(islem: IslemKaydi) {
             Color(0xFF34C759),
             Icons.Default.Payments
         )
+        is IslemKaydi.TedarikciOdemeIslemi -> IslemGoruntu(
+            "Tedarikçiye Ödeme Yapıldı",
+            "${islem.odeme.tedarikciAdi} firmasına yapılan nakit/havale",
+            islem.odeme.tutar,
+            Color(0xFFFF3B30),
+            Icons.Default.Payments
+        )
     }
 
     Card(
@@ -814,4 +848,5 @@ sealed class HafifIslem(val tarih: String) {
     class M(val masraf: com.eray.muhasebeapp.database.Masraf) : HafifIslem(masraf.tarih)
     class St(val stok: com.eray.muhasebeapp.database.StokHareketi) : HafifIslem(stok.tarih)
     class T(val tahsilat: com.eray.muhasebeapp.database.Tahsilat) : HafifIslem(tahsilat.tarih)
+    class O(val odeme: com.eray.muhasebeapp.database.TedarikciOdemesi) : HafifIslem(odeme.tarih)
 }
