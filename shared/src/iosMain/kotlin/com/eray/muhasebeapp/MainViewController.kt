@@ -7,6 +7,7 @@ import com.eray.muhasebeapp.database.shared.AppDatabase
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSLocale
+import platform.Foundation.timeIntervalSince1970
 
 fun MainViewController() = ComposeUIViewController {
 
@@ -23,9 +24,20 @@ fun MainViewController() = ComposeUIViewController {
     }
     val iosTarih = formatter.stringFromDate(NSDate())
 
-    // 3. Tıpkı Android'deki gibi veritabanını ve tarihi App'e paslıyoruz
+    // 3. iOS için platform veritabanı yöneticisi (yedekleme/geri yükleme için)
+    val platformDbManager = PlatformDatabaseManager()
+
+    // 4. Şu anki zamanı milisaniye olarak alıyoruz
+    val simdiMillis = (NSDate().timeIntervalSince1970 * 1000).toLong()
+
+    // 5. Tıpkı Android'deki gibi veritabanını, tarihi ve yeni parametreleri App'e paslıyoruz
     App(
         database = database,
-        guncelTarih = iosTarih
+        platformDbManager = platformDbManager,
+        guncelTarih = iosTarih,
+        simdiMillis = simdiMillis,
+        onYedekYukleIstegi = {
+            // TODO: iOS tarafında yedek yükleme akışı (dosya seçici vs.) henüz bağlanmadı
+        }
     )
 }
