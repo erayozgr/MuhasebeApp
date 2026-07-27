@@ -21,13 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
-import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import kotlinx.serialization.json.*
-import kotlin.math.roundToInt
+import com.eray.muhasebeapp.PlatformDatabaseManager
+import com.eray.muhasebeapp.rememberDosyaPaylasici
 
-// Menü butonları için veri yapısı
 data class MenuButonModel(
     val baslik: String,
     val ikon: ImageVector,
@@ -38,6 +34,7 @@ data class MenuButonModel(
 @Composable
 fun AnaMenuScreen(
     database: AppDatabase,
+    platformDbManager: PlatformDatabaseManager, // 🎯 KMP platform yöneticisi
     onNavigateToUrunler: () -> Unit,
     onNavigateToMusteriler: () -> Unit,
     onNavigateToTedarikciler: () -> Unit,
@@ -46,48 +43,18 @@ fun AnaMenuScreen(
     onNavigateToMasraf: () -> Unit,
     onNavigateToRaporlama: () -> Unit,
     onNavigateToStok: () -> Unit,
+    onYedekYukleIstegi: () -> Unit, // 🎯 UI dışından (FilePicker tetiklemek için) lambda fonksiyonu
     guncelTarih: String
 ) {
-    var dolarKuru by remember { mutableStateOf("Yükleniyor...") }
-    var euroKuru by remember { mutableStateOf("Yükleniyor...") }
-
-    LaunchedEffect(Unit) {
-        try {
-            val client = HttpClient()
-            val response = client.get("https://open.er-api.com/v6/latest/USD").bodyAsText()
-
-            val json = Json.parseToJsonElement(response).jsonObject
-            val rates = json["rates"]?.jsonObject
-
-            val tryRate = rates?.get("TRY")?.jsonPrimitive?.doubleOrNull
-            val eurRate = rates?.get("EUR")?.jsonPrimitive?.doubleOrNull
-
-            if (tryRate != null && eurRate != null) {
-                val usdToTry = ((tryRate * 100).roundToInt() / 100.0).toString()
-                val eurToTry = (((tryRate / eurRate) * 100).roundToInt() / 100.0).toString()
-
-                dolarKuru = usdToTry
-                euroKuru = eurToTry
-            }
-        } catch (e: Exception) {
-            dolarKuru = "34.45"
-            euroKuru = "37.12"
-        }
-    }
-
     val urunler = remember { database.appDatabaseQueries.selectAllUrun().executeAsList() }
+    val dosyaPaylasici = rememberDosyaPaylasici()
 
-    val toplamUrunSayisi = urunler.size
-    val toplamStokDegeri = urunler.sumOf { it.alisFiyati * it.stokAdedi }
-    val toplamSatisDegeri = urunler.sumOf { it.satisFiyati * it.stokAdedi }
-
-    // 🎯 DÜZELTME: Kart için tüm kritik stokları sayıyoruz, liste için sadece ilk 5'ini alıyoruz.
     val tumKritikUrunler = urunler.filter { it.stokAdedi <= 5L }
     val kritikStoklarGosterim = tumKritikUrunler.sortedBy { it.stokAdedi }.take(5)
 
-    val potansiyelKar = toplamSatisDegeri - toplamStokDegeri
+    var uyarıMesaji by remember { mutableStateOf("") }
+    var diyalogAcikMi by remember { mutableStateOf(false) }
 
-    // Grid Menü Butonları Listesi
     val menuButonlari = listOf(
         MenuButonModel("Müşteri", Icons.Default.Person, Color(0xFF007AFF), onNavigateToMusteriler),
         MenuButonModel("Tedarikçi", Icons.Default.LocalShipping, Color(0xFF5856D6), onNavigateToTedarikciler),
@@ -128,83 +95,35 @@ fun AnaMenuScreen(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+        TarihBari(tarih = guncelTarih)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        DovizVeTarihBari(usd = dolarKuru, eur = euroKuru, tarih = guncelTarih)
-
-        Spacer(modifier = Modifier.height(12.dp))
-
+        // 1. BÖLÜM: HIZLI İŞLEMLER
         Text(
-            text = "STOK DURUMU",
+            text = "HIZLI İŞLEMLER",
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF8E8E93),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
 
-        Row(
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                .heightIn(max = 410.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            BuyukStatKart(
-                baslik = "Toplam Ürün",
-                deger = "$toplamUrunSayisi",
-                altBaslik = "kayıtlı ürün çeşidi",
-                renk = Color(0xFF007AFF),
-                ikon = Icons.Default.List,
-                modifier = Modifier.weight(1f).clickable { onNavigateToUrunler() }
-            )
-            BuyukStatKart(
-                baslik = "Kritik Stok",
-                deger = "${tumKritikUrunler.size}", // 🎯 DÜZELTME: Artık gerçek toplam adet yazıyor.
-                altBaslik = "ürün eşikte veya altında",
-                renk = if (tumKritikUrunler.isNotEmpty()) Color(0xFFFF3B30) else Color(0xFF34C759),
-                ikon = Icons.Default.Warning,
-                modifier = Modifier.weight(1f).clickable { onNavigateToUrunler() }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Text(
-            text = "MALİ ÖZET",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF8E8E93),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-        )
-
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-        ) {
-            Column {
-                MaliSatir(
-                    etiket = "Stok Maliyet Değeri (Alış)",
-                    deger = "₺${toplamStokDegeri}",
-                    renk = Color(0xFFFF9500)
-                )
-                HorizontalDivider(color = Color(0xFFF2F2F7), thickness = 1.dp)
-                MaliSatir(
-                    etiket = "Stok Satış Değeri",
-                    deger = "₺${toplamSatisDegeri}",
-                    renk = Color(0xFF007AFF)
-                )
-                HorizontalDivider(color = Color(0xFFF2F2F7), thickness = 1.dp)
-                MaliSatir(
-                    etiket = "Potansiyel Kâr",
-                    deger = "₺${potansiyelKar}",
-                    renk = if (potansiyelKar >= 0) Color(0xFF34C759) else Color(0xFFFF3B30),
-                    kalin = true
-                )
+            items(menuButonlari) { buton ->
+                MenuButonItem(model = buton)
             }
         }
 
+        // 2. BÖLÜM: KRİTİK STOK UYARILARI
         if (tumKritikUrunler.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "KRİTİK STOK UYARILARI",
                 fontSize = 12.sp,
@@ -219,7 +138,6 @@ fun AnaMenuScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { onNavigateToUrunler() }
             ) {
                 Column {
-                    // 🎯 DÜZELTME: Arayüzde listeleme için 5'e sınırlanmış listeyi kullanıyoruz.
                     kritikStoklarGosterim.forEachIndexed { index, urun ->
                         Row(
                             modifier = Modifier
@@ -259,88 +177,107 @@ fun AnaMenuScreen(
             }
         }
 
+        // 🎯 3. BÖLÜM: VERİ GÜVENLİĞİ VE YEDEKLEME (SAĞ / SOL ALTA GELECEK YAPI)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "HIZLI İŞLEMLER",
+            text = "VERİ GÜVENLİĞİ VE BULUT YEDEK",
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = Color(0xFF8E8E93),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 410.dp)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(menuButonlari) { buton ->
-                MenuButonItem(model = buton)
+            // İNDİR (DIŞA AKTAR) BUTTON
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(80.dp)
+                    .clickable {
+                        val dbBytes = platformDbManager.getDatabaseBytes(database)
+                        if (dbBytes != null) {
+                            dosyaPaylasici.paylasBytes("muhasebe_yedek.db", dbBytes)
+                        } else {
+                            uyarıMesaji = "Yedek dosyası okunurken hata oluştu!"
+                            diyalogAcikMi = true
+                        }
+                    }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(12.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = "İndir", tint = Color(0xFF34C759), modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("DB Yedek İndir", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                }
+            }
+
+            // YÜKLE (İÇE AKTAR) BUTTON
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(80.dp)
+                    .clickable { onYedekYukleIstegi() }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(12.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = "Yükle", tint = Color(0xFF007AFF), modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("DB Yedek Yükle", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
     }
+
+    // Bildirim Penceresi
+    if (diyalogAcikMi) {
+        AlertDialog(
+            onDismissRequest = { diyalogAcikMi = false },
+            title = { Text("Sistem Mesajı", fontWeight = FontWeight.Bold) },
+            text = { Text(uyarıMesaji) },
+            confirmButton = {
+                TextButton(onClick = { diyalogAcikMi = false }) { Text("Tamam") }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Color.White
+        )
+    }
 }
 
 @Composable
-fun DovizVeTarihBari(usd: String, eur: String, tarih: String) {
+fun TarihBari(tarih: String) {
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(text = "$", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34C759))
-                    Text(text = "₺$usd", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(text = "€", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF007AFF))
-                    Text(text = "₺$eur", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = null,
-                    tint = Color(0xFF8E8E93),
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = tarih,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF8E8E93)
-                )
-            }
+            Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(text = tarih, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF8E8E93))
         }
     }
 }
@@ -351,80 +288,16 @@ fun MenuButonItem(model: MenuButonModel) {
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(90.dp)
-            .clickable { model.tiklamaAksiyonu() }
+        modifier = Modifier.fillMaxWidth().height(90.dp).clickable { model.tiklamaAksiyonu() }
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxSize().padding(12.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.Start
         ) {
-            Icon(
-                imageVector = model.ikon,
-                contentDescription = model.baslik,
-                tint = model.ikonRengi,
-                modifier = Modifier.size(28.dp)
-            )
+            Icon(imageVector = model.ikon, contentDescription = model.baslik, tint = model.ikonRengi, modifier = Modifier.size(28.dp))
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = model.baslik,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black
-            )
+            Text(text = model.baslik, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
         }
-    }
-}
-
-@Composable
-fun BuyukStatKart(
-    baslik: String,
-    deger: String,
-    altBaslik: String,
-    renk: Color,
-    ikon: ImageVector,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Icon(imageVector = ikon, contentDescription = null, tint = renk, modifier = Modifier.size(22.dp))
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = deger, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = renk)
-            Text(text = baslik, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-            Text(text = altBaslik, fontSize = 11.sp, color = Color(0xFF8E8E93))
-        }
-    }
-}
-
-@Composable
-fun MaliSatir(etiket: String, deger: String, renk: Color, kalin: Boolean = false) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = etiket,
-            fontSize = 15.sp,
-            color = Color(0xFF3C3C43),
-            fontWeight = if (kalin) FontWeight.SemiBold else FontWeight.Normal
-        )
-        Text(
-            text = deger,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = renk
-        )
     }
 }

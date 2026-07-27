@@ -2,6 +2,7 @@ package com.eray.muhasebeapp.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -23,7 +27,9 @@ import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.Masraf
 import com.eray.muhasebeapp.getEpochMillis
-import com.eray.muhasebeapp.getBugununTarihiString
+import com.eray.muhasebeapp.formatTarih
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // Masraf kategorileri ve ikonları
 val masrafKategorileri = listOf(
@@ -35,60 +41,113 @@ val masrafKategorileri = listOf(
     "Diğer" to Icons.Default.MoreHoriz
 )
 
-fun kategoriIkonu(kategori: String) =
+private fun kategoriIkonu(kategori: String) =
     masrafKategorileri.firstOrNull { it.first == kategori }?.second ?: Icons.Default.MoreHoriz
 
-// "yyyy-MM-dd" formatını ekranda göstermek için "gg.aa.yyyy" formatına çevirir
-fun tarihGoruntule(tarihStr: String): String {
-    if (tarihStr.isBlank()) return "-"
-    val parcalar = tarihStr.split("-")
-    if (parcalar.size != 3) return tarihStr
-    return "${parcalar[2]}.${parcalar[1]}.${parcalar[0]}"
-}
+private val turkceAylar = listOf(
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+)
 
-// "yyyy-MM-dd" formatındaki girdinin geçerli bir tarih oluşturup oluşturmadığını doğrular
-fun tarihGecerliMi(gun: Int, ay: Int, yil: Int): Boolean {
-    return try {
-        if (ay in 1..12 && gun in 1..31) {
-            val subatSınır = if ((yil % 4 == 0 && yil % 100 != 0) || (yil % 400 == 0)) 29 else 28
-            val gunSınırları = intArrayOf(31, subatSınır, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-            gun <= gunSınırları[ay - 1]
-        } else false
-    } catch (e: Exception) {
-        false
-    }
+private fun ayBasligiUret(tarihMillisStr: String): String {
+    val gosterim = formatTarih(tarihMillisStr).substringBefore(" ") // "dd.MM.yyyy"
+    val parcalar = gosterim.split(".")
+    if (parcalar.size != 3) return "Bilinmeyen Tarih"
+    val ay = parcalar[1].toIntOrNull() ?: return "Bilinmeyen Tarih"
+    val yil = parcalar[2]
+    val ayAdi = turkceAylar.getOrElse(ay - 1) { "Bilinmeyen" }
+    return "$ayAdi $yil Masrafları"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MasrafScreen(
     database: AppDatabase,
+    simdiMillis: Long,
     onNavigateBack: () -> Unit
 ) {
+    var yukleniyor by remember { mutableStateOf(true) }
+    var hataMesaji by remember { mutableStateOf<String?>(null) }
+    var gruplanmisMasraflar by remember { mutableStateOf<Map<String, List<Masraf>>>(emptyMap()) }
+
+    var seciliFiltre by remember { mutableStateOf("Tümü") }
+    var seciliDonem by remember { mutableStateOf(RaporDonemi.BU_AY) }
+    var mevcutLimit by remember { mutableStateOf(30) }
     var yenilemeTetikleyici by remember { mutableStateOf(0) }
-    val tumMasraflar = remember(yenilemeTetikleyici) {
-        database.appDatabaseQueries.selectAllMasraf().executeAsList()
+
+    var toplamMasraf by remember { mutableStateOf(0.0) }
+    var islemSayisi by remember { mutableStateOf(0) }
+
+    // Sağa kaydırarak geri dönme (Swipe Back) durumu için drag takibi
+    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+
+    // KMP Uyumlu Default Background Thread aracı
+    LaunchedEffect(seciliDonem, seciliFiltre, mevcutLimit, yenilemeTetikleyici) {
+        yukleniyor = true
+        withContext(Dispatchers.Default) {
+            try {
+                val donemBaslangic = donemBaslangicMillis(seciliDonem, simdiMillis)
+                val hamMasraflar = database.appDatabaseQueries.selectAllMasraf().executeAsList()
+
+                val masraflarFiltreli = hamMasraflar.filter { m ->
+                    val kategoriUyar = seciliFiltre == "Tümü" || m.kategori == seciliFiltre
+                    val donemUyar = donemBaslangic == null || (m.tarih.toLongOrNull() ?: 0L) >= donemBaslangic
+                    kategoriUyar && donemUyar
+                }.sortedByDescending { it.tarih.toLongOrNull() ?: 0L }
+
+                toplamMasraf = masraflarFiltreli.sumOf { it.tutar }
+                islemSayisi = masraflarFiltreli.size
+
+                val limitliMasraflar = masraflarFiltreli.take(mevcutLimit)
+                gruplanmisMasraflar = limitliMasraflar.groupBy { ayBasligiUret(it.tarih) }
+
+            } catch (e: Throwable) {
+                hataMesaji = "MASRAF VERİSİ İŞLENİRKEN HATA OLUŞTU:\n${e::class.simpleName}: ${e.message}\n${e.stackTraceToString().take(1000)}"
+            } finally {
+                yukleniyor = false
+            }
+        }
+    }
+
+    if (hataMesaji != null) {
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Bir hata oluştu, lütfen bu metni kopyala:", fontWeight = FontWeight.Bold, color = Color.Red)
+                Spacer(modifier = Modifier.height(8.dp))
+                SelectionContainer { Text(hataMesaji ?: "", fontSize = 12.sp) }
+            }
+        }
+        return
+    }
+
+    if (yukleniyor && gruplanmisMasraflar.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color(0xFFFF3B30))
+        }
+        return
     }
 
     var dialogAcikMi by remember { mutableStateOf(false) }
-    var seciliFiltre by remember { mutableStateOf("Tümü") }
-
-    val masraflar = remember(tumMasraflar, seciliFiltre) {
-        if (seciliFiltre == "Tümü") tumMasraflar
-        else tumMasraflar.filter { it.kategori == seciliFiltre }
-    }
-
-    val toplamMasraf = masraflar.sumOf { it.tutar }
-    val odenmemisToplam = masraflar.filter { it.odendiMi != 1L }.sumOf { it.tutar }
-
-    val bugun = getBugununTarihiString()
-
-    val gecikenSayisi = masraflar.count {
-        it.odendiMi != 1L && it.sonOdemeTarihi.isNotBlank() && it.sonOdemeTarihi < bugun
-    }
+    var silinecekMasraf by remember { mutableStateOf<Masraf?>(null) }
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
+        modifier = Modifier.pointerInput(Unit) {
+            detectHorizontalDragGestures(
+                onDragStart = { horizontalDragAccumulator = 0f },
+                onDragEnd = {
+                    // Sağa doğru yeterli kaydırma yapıldıysa ana menüye dön
+                    if (horizontalDragAccumulator > 150f) {
+                        onNavigateBack()
+                    }
+                },
+                onDragCancel = { horizontalDragAccumulator = 0f },
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    horizontalDragAccumulator += dragAmount
+                }
+            )
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Masraf", fontWeight = FontWeight.Bold, color = Color.Black) },
@@ -111,19 +170,39 @@ fun MasrafScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
+            // DÖNEM SEÇİCİ
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RaporDonemi.entries.forEach { donem ->
+                    FilterChip(
+                        selected = seciliDonem == donem,
+                        onClick = {
+                            seciliDonem = donem
+                            mevcutLimit = 30
+                        },
+                        label = { Text(donem.etiket, fontSize = 13.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFFFF3B30),
+                            selectedLabelColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+            }
+
             // ÜST ÖZET KARTLARI
             Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OzetKart("Toplam", "₺$toplamMasraf", Color(0xFFFF3B30), Modifier.weight(1f))
-                OzetKart("Ödenmemiş", "₺$odenmemisToplam", Color(0xFFFF9500), Modifier.weight(1f))
-                OzetKart(
-                    "Geciken",
-                    "$gecikenSayisi",
-                    if (gecikenSayisi > 0) Color(0xFFFF3B30) else Color(0xFF34C759),
-                    Modifier.weight(1f)
-                )
+                // 🎯 DEĞİŞTİRİLDİ: Toplam masraf virgülden sonra iki basamak yapıldı
+                MasrafOzetKart("Toplam", "₺${formatMasrafIkiBasamak(toplamMasraf)}", Color(0xFFFF3B30), Modifier.weight(1f))
+                MasrafOzetKart("İşlem Sayısı", "$islemSayisi", Color(0xFF8E8E93), Modifier.weight(1f))
             }
 
             // KATEGORİ FİLTRE ÇUBUĞU
@@ -137,48 +216,67 @@ fun MasrafScreen(
                 KategoriFiltreCip(
                     baslik = "Tümü",
                     seciliMi = seciliFiltre == "Tümü"
-                ) { seciliFiltre = "Tümü" }
+                ) {
+                    seciliFiltre = "Tümü"
+                    mevcutLimit = 30
+                }
 
                 masrafKategorileri.forEach { (kategori, _) ->
                     KategoriFiltreCip(
                         baslik = kategori,
                         seciliMi = seciliFiltre == kategori
-                    ) { seciliFiltre = kategori }
+                    ) {
+                        seciliFiltre = kategori
+                        mevcutLimit = 30
+                    }
                 }
             }
 
-            Text(
-                text = "MASRAF GEÇMİŞİ",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8E8E93),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-
-            if (masraflar.isEmpty()) {
+            // LİSTELEME
+            if (gruplanmisMasraflar.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Bu kategoride masraf yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
+                    Text(if(yukleniyor) "Yükleniyor..." else "Bu dönemde masraf yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
                 }
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    items(masraflar) { masraf ->
-                        MasrafKart(
-                            masraf = masraf,
-                            bugun = bugun,
-                            onDurumDegistir = {
-                                val yeniDurum = if (masraf.odendiMi == 1L) 0L else 1L
-                                database.appDatabaseQueries.updateMasrafOdemeDurumu(yeniDurum, masraf.id)
-                                yenilemeTetikleyici++
-                            },
-                            onSil = {
-                                database.appDatabaseQueries.deleteMasraf(masraf.id)
-                                yenilemeTetikleyici++
-                            }
-                        )
+                    gruplanmisMasraflar.forEach { (ayBasligi, masraflarListesi) ->
+                        item {
+                            Text(
+                                text = ayBasligi,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF3B30),
+                                modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(masraflarListesi, key = { it.id }) { masraf ->
+                            MasrafKart(
+                                masraf = masraf,
+                                onSil = { silinecekMasraf = masraf }
+                            )
+                        }
                     }
+
+                    if (islemSayisi > mevcutLimit) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                TextButton(
+                                    onClick = { mevcutLimit += 30 },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFF3B30))
+                                ) {
+                                    Text("Daha Fazla Masraf Yükle (+30)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+
                     item { Spacer(modifier = Modifier.height(88.dp)) }
                 }
             }
@@ -188,24 +286,48 @@ fun MasrafScreen(
     if (dialogAcikMi) {
         MasrafEkleDialog(
             onDismiss = { dialogAcikMi = false },
-            onKaydet = { kategori, aciklama, tutar, odendiMi, sonOdemeTarihi ->
+            onKaydet = { kategori, aciklama, tutar ->
                 database.appDatabaseQueries.insertMasraf(
                     kategori,
                     aciklama,
                     tutar,
-                    getEpochMillis().toString(),
-                    if (odendiMi) 1L else 0L,
-                    sonOdemeTarihi
+                    getEpochMillis().toString()
                 )
                 yenilemeTetikleyici++
                 dialogAcikMi = false
             }
         )
     }
+
+    silinecekMasraf?.let { masraf ->
+        AlertDialog(
+            onDismissRequest = { silinecekMasraf = null },
+            containerColor = Color.White,
+            title = { Text("Masrafı Sil", fontWeight = FontWeight.Bold) },
+            text = { Text("Bu masraf kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        database.appDatabaseQueries.deleteMasraf(masraf.id)
+                        yenilemeTetikleyici++
+                        silinecekMasraf = null
+                    }
+                ) {
+                    Text("Sil", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { silinecekMasraf = null }) {
+                    Text("İptal", color = Color(0xFF8E8E93))
+                }
+            }
+        )
+    }
 }
 
+// 🎯 ÇAKIŞMALARI ENGELLEMEK İÇİN YARDIMCI BİLEŞENLERE PRIVATE EKLENDİ
 @Composable
-fun KategoriFiltreCip(baslik: String, seciliMi: Boolean, onClick: () -> Unit) {
+private fun KategoriFiltreCip(baslik: String, seciliMi: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .background(
@@ -225,92 +347,45 @@ fun KategoriFiltreCip(baslik: String, seciliMi: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun MasrafKart(
+private fun MasrafKart(
     masraf: Masraf,
-    bugun: String,
-    onDurumDegistir: () -> Unit,
     onSil: () -> Unit
 ) {
-    val odendiMi = masraf.odendiMi == 1L
-    val sonOdemeTarihStr = masraf.sonOdemeTarihi
-    val gecikmisMi = !odendiMi && sonOdemeTarihStr.isNotBlank() && sonOdemeTarihStr < bugun
-
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0xFFFF3B30).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(kategoriIkonu(masraf.kategori), contentDescription = null, tint = Color(0xFFFF3B30))
-                    }
-                    Column {
-                        Text(masraf.kategori, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                        Text(masraf.aciklama, fontSize = 13.sp, color = Color(0xFF8E8E93))
-                    }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color(0xFFFF3B30).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(kategoriIkonu(masraf.kategori), contentDescription = null, tint = Color(0xFFFF3B30))
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("₺${masraf.tutar}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF3B30))
-                    IconButton(onClick = onSil, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color(0xFFFF3B30))
-                    }
+                Column {
+                    Text(masraf.kategori, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text(masraf.aciklama, fontSize = 13.sp, color = Color(0xFF8E8E93))
+                    Text(
+                        formatTarih(masraf.tarih).substringBefore(" "),
+                        fontSize = 11.sp,
+                        color = Color(0xFF8E8E93)
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = Color(0xFFF2F2F7), thickness = 1.dp)
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier
-                        .background(
-                            (if (odendiMi) Color(0xFF34C759) else Color(0xFFFF9500)).copy(alpha = 0.12f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable { onDurumDegistir() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        if (odendiMi) Icons.Default.CheckCircle else Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = if (odendiMi) Color(0xFF34C759) else Color(0xFFFF9500),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        if (odendiMi) "Ödendi" else "Ödenecek",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (odendiMi) Color(0xFF34C759) else Color(0xFFFF9500)
-                    )
-                }
-
-                if (sonOdemeTarihStr.isNotBlank()) {
-                    Text(
-                        text = if (gecikmisMi) "Gecikti: ${tarihGoruntule(sonOdemeTarihStr)}"
-                        else "Son ödeme: ${tarihGoruntule(sonOdemeTarihStr)}",
-                        fontSize = 12.sp,
-                        fontWeight = if (gecikmisMi) FontWeight.Bold else FontWeight.Medium,
-                        color = if (gecikmisMi) Color(0xFFFF3B30) else Color(0xFF8E8E93)
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 🎯 DEĞİŞTİRİLDİ: Tekil masraf kartı tutarı iki basamak yapıldı
+                Text("₺${formatMasrafIkiBasamak(masraf.tutar)}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF3B30))
+                IconButton(onClick = onSil, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color(0xFFFF3B30))
                 }
             }
         }
@@ -318,19 +393,14 @@ fun MasrafKart(
 }
 
 @Composable
-fun MasrafEkleDialog(
+private fun MasrafEkleDialog(
     onDismiss: () -> Unit,
-    onKaydet: (kategori: String, aciklama: String, tutar: Double, odendiMi: Boolean, sonOdemeTarihi: String) -> Unit
+    onKaydet: (kategori: String, aciklama: String, tutar: Double) -> Unit
 ) {
     var seciliKategori by remember { mutableStateOf(masrafKategorileri.first().first) }
     var aciklama by remember { mutableStateOf("") }
     var tutarText by remember { mutableStateOf("") }
     var dropdownAcikMi by remember { mutableStateOf(false) }
-    var odendiMi by remember { mutableStateOf(true) }
-
-    var gunText by remember { mutableStateOf("") }
-    var ayText by remember { mutableStateOf("") }
-    var yilText by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -371,7 +441,8 @@ fun MasrafEkleDialog(
                     value = aciklama,
                     onValueChange = { aciklama = it },
                     label = { Text("Açıklama") },
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = tutarText,
@@ -381,82 +452,13 @@ fun MasrafEkleDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // 🎯 DÜZELTME: Çakışmayı önlemek için yeni isimle (MasrafDurumButonu) çağırıldı
-                    MasrafDurumButonu(
-                        baslik = "Ödendi",
-                        seciliMi = odendiMi,
-                        renk = Color(0xFF34C759),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        odendiMi = true
-                    }
-
-                    MasrafDurumButonu(
-                        baslik = "Ödenecek",
-                        seciliMi = !odendiMi,
-                        renk = Color(0xFFFF9500),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        odendiMi = false
-                    }
-                }
-
-                if (!odendiMi) {
-                    Text("Son Ödeme Tarihi", fontSize = 12.sp, color = Color(0xFF8E8E93))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = gunText,
-                            onValueChange = { input ->
-                                if (input.length <= 2 && input.all { it.isDigit() }) gunText = input
-                            },
-                            label = { Text("Gün") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = ayText,
-                            onValueChange = { input ->
-                                if (input.length <= 2 && input.all { it.isDigit() }) ayText = input
-                            },
-                            label = { Text("Ay") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = yilText,
-                            onValueChange = { input ->
-                                if (input.length <= 4 && input.all { it.isDigit() }) yilText = input
-                            },
-                            label = { Text("Yıl") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1.3f)
-                        )
-                    }
-                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val tutar = tutarText.toDoubleOrNull() ?: 0.0
                 if (tutar <= 0) return@TextButton
-
-                val sonOdemeTarihi = if (!odendiMi) {
-                    val gun = gunText.toIntOrNull()
-                    val ay = ayText.toIntOrNull()
-                    val yil = yilText.toIntOrNull()
-                    if (gun != null && ay != null && yil != null && tarihGecerliMi(gun, ay, yil)) {
-                        val gunStr = gun.toString().padStart(2, '0')
-                        val ayStr = ay.toString().padStart(2, '0')
-                        "$yil-$ayStr-$gunStr"
-                    } else ""
-                } else ""
-
-                onKaydet(seciliKategori, aciklama.ifBlank { seciliKategori }, tutar, odendiMi, sonOdemeTarihi)
+                onKaydet(seciliKategori, aciklama.ifBlank { seciliKategori }, tutar)
             }) { Text("Kaydet", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
@@ -465,31 +467,29 @@ fun MasrafEkleDialog(
     )
 }
 
-// 🎯 DÜZELTME: SatisScreen'deki butonla çakışmaması için ismi 'MasrafDurumButonu' olarak değiştirildi
 @Composable
-private fun MasrafDurumButonu(
-    baslik: String,
-    seciliMi: Boolean,
-    renk: Color,
-    aktifMi: Boolean = true,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
+private fun MasrafOzetKart(baslik: String, deger: String, renk: Color, modifier: Modifier = Modifier) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
-            .height(44.dp)
-            .background(
-                if (seciliMi) renk else Color.White,
-                RoundedCornerShape(10.dp)
-            )
-            .clickable(enabled = aktifMi) { onClick() },
-        contentAlignment = Alignment.Center
     ) {
-        Text(
-            baslik,
-            color = if (seciliMi) Color.White else if (aktifMi) Color.Black else Color(0xFFC7C7CC),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp
-        )
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(baslik, fontSize = 12.sp, color = Color(0xFF8E8E93))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(deger, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = renk)
+        }
     }
+}
+
+// 🎯 KMP UYUMLU VE SAPMASIZ PARASAL BİÇİMLENDİRİCİ
+private fun formatMasrafIkiBasamak(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlakDeger = if (negatifMi) -deger else deger
+    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
+    val tamKisim = yuvarlanmis.toLong()
+    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
+    val kesirStr = kesirKisim.toString().padStart(2, '0')
+    return "${if (negatifMi) "-" else ""}$tamKisim.$kesirStr"
 }

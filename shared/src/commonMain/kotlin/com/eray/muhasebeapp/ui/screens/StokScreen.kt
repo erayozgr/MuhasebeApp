@@ -2,10 +2,12 @@ package com.eray.muhasebeapp.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -13,13 +15,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.UrunEntity
 import com.eray.muhasebeapp.getEpochMillis
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StokScreen(
     database: AppDatabase,
@@ -43,8 +48,27 @@ fun StokScreen(
     val kritikStoklar = urunler.filter { it.stokAdedi <= 5L }
     val toplamStokAdedi = urunler.sumOf { it.stokAdedi }
 
+    // Sağa kaydırarak geri dönme (Swipe Back) durumu
+    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
+        modifier = Modifier.pointerInput(Unit) {
+            detectHorizontalDragGestures(
+                onDragStart = { horizontalDragAccumulator = 0f },
+                onDragEnd = {
+                    // Sağa doğru yeterli miktarda kaydırıldıysa ana menüye döner
+                    if (horizontalDragAccumulator > 150f) {
+                        onNavigateBack()
+                    }
+                },
+                onDragCancel = { horizontalDragAccumulator = 0f },
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    horizontalDragAccumulator += dragAmount
+                }
+            )
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Stok", fontWeight = FontWeight.Bold, color = Color.Black) },
@@ -59,14 +83,14 @@ fun StokScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // ÜST ÖZET KARTLARI
+            // ÜST ÖZET KARTLARI (🎯 DÜZELTİLDİ: Çakışmayan yeni isimle çağrılıyor)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OzetKart("Toplam Ürün", "${urunler.size}", Color(0xFF5AC8FA), Modifier.weight(1f))
-                OzetKart("Toplam Adet", "$toplamStokAdedi", Color(0xFF007AFF), Modifier.weight(1f))
-                OzetKart(
+                StokOzetKart("Toplam Ürün", "${urunler.size}", Color(0xFF5AC8FA), Modifier.weight(1f))
+                StokOzetKart("Toplam Adet", "$toplamStokAdedi", Color(0xFF007AFF), Modifier.weight(1f))
+                StokOzetKart(
                     "Kritik Stok",
                     "${kritikStoklar.size}",
                     if (kritikStoklar.isNotEmpty()) Color(0xFFFF3B30) else Color(0xFF34C759),
@@ -131,7 +155,7 @@ fun StokScreen(
                         urunAdi = urun.ad,
                         hareketTuru = hareketTuru,
                         miktar = miktar.toLong(),
-                        birimFiyat = 0.0, // <-- Hatanın sebebi bu parametrenin eksik olmasıydı!
+                        birimFiyat = 0.0,
                         aciklama = aciklama.ifBlank { "Manuel düzeltme" },
                         tarih = getEpochMillis().toString()
                     )
@@ -144,7 +168,7 @@ fun StokScreen(
 }
 
 @Composable
-fun StokKart(urun: UrunEntity, onDuzenle: () -> Unit) {
+private fun StokKart(urun: UrunEntity, onDuzenle: () -> Unit) {
     val kritikMi = urun.stokAdedi <= 5L
     val renk = if (kritikMi) Color(0xFFFF3B30) else Color(0xFF5AC8FA)
 
@@ -191,7 +215,7 @@ fun StokKart(urun: UrunEntity, onDuzenle: () -> Unit) {
 }
 
 @Composable
-fun StokDuzenleDialog(
+private fun StokDuzenleDialog(
     urun: UrunEntity,
     onDismiss: () -> Unit,
     onKaydet: (hareketTuru: String, miktar: Int, aciklama: String) -> Unit
@@ -206,7 +230,6 @@ fun StokDuzenleDialog(
         title = { Text("${urun.ad} - Stok Düzelt", fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                // Genişliği doldurarak içindeki textfield'ların düzgün yayılmasını sağlıyoruz
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -235,22 +258,20 @@ fun StokDuzenleDialog(
                     ) { hareketTuru = "Çıkış" }
                 }
 
-                // Hataya sebep olan 134. Satır Düzeltmesi
                 OutlinedTextField(
                     value = miktarText,
                     onValueChange = { miktarText = it },
                     label = { Text("Miktar") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth() // Tam genişlik verdik
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                // Hataya sebep olan 135. Satır Düzeltmesi
                 OutlinedTextField(
                     value = aciklama,
                     onValueChange = { aciklama = it },
                     label = { Text("Açıklama (fire, sayım, iade vb.)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth() // Tam genişlik verdik
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
@@ -267,8 +288,9 @@ fun StokDuzenleDialog(
         }
     )
 }
+
 @Composable
-fun HareketTuruButon(
+private fun HareketTuruButon(
     baslik: String,
     seciliMi: Boolean,
     renk: Color,
@@ -288,5 +310,22 @@ fun HareketTuruButon(
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp
         )
+    }
+}
+
+//  ÇAKIŞMAYI ENGELLEMEK İÇİN İSMİ DEĞİŞTİRİLDİ VE PRIVATE YAPILDI
+@Composable
+private fun StokOzetKart(baslik: String, deger: String, renk: Color, modifier: Modifier = Modifier) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 14.dp)) {
+            Text(baslik, fontSize = 12.sp, color = Color(0xFF8E8E93))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(deger, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = renk)
+        }
     }
 }

@@ -10,11 +10,6 @@ import com.eray.muhasebeapp.database.StokHareketi
  * Aynı parametreleri alır, ama düz metin CSV yerine gerçek bir Excel dosyası
  * (SpreadsheetML / .xls) üretir: başlıklar renkli, para birimi hücreleri
  * biçimli, her tablonun altında toplam satırı ve donmuş üst satır var.
- *
- * SpreadsheetML tercih edildi çünkü tamamen düz XML metni olarak commonMain
- * içinde üretilebiliyor; gerçek .xlsx (zip) üretmek KMP'de platforma özel
- * zip kütüphanesi gerektirir. Excel, Numbers ve Google Sheets bu formatı
- * "gerçek" bir çalışma kitabı olarak açar.
  */
 fun excelRaporuOlustur(
     satislar: List<Satis>,
@@ -24,11 +19,9 @@ fun excelRaporuOlustur(
 ): String {
     val toplamSatis = satislar.sumOf { it.toplamTutar }
     val toplamAlis = alislar.sumOf { it.toplamTutar }
-    val odenenMasraf = masraflar.filter { it.odendiMi == 1L }.sumOf { it.tutar }
-    val bekleyenMasraf = masraflar.filter { it.odendiMi != 1L }.sumOf { it.tutar }
-    val toplamMasraf = odenenMasraf + bekleyenMasraf
+    val toplamMasraf = masraflar.sumOf { it.tutar } // 🌟 odendiMi kaldırıldığı için direkt toplam alındı
     val brutKar = toplamSatis - toplamAlis
-    val netKar = toplamSatis - toplamAlis - odenenMasraf
+    val netKar = toplamSatis - toplamAlis - toplamMasraf // 🌟 Net kar toplam masrafa göre revize edildi
     val ortalamaSatis = if (satislar.isNotEmpty()) toplamSatis / satislar.size else 0.0
     val ortalamaAlis = if (alislar.isNotEmpty()) toplamAlis / alislar.size else 0.0
     val toplamStokTutari = stokHareketleri.sumOf { it.birimFiyat * it.miktar }
@@ -51,9 +44,7 @@ fun excelRaporuOlustur(
     sb.append(row(""))
     sb.append(labelValueRow("Toplam Satis", toplamSatis))
     sb.append(labelValueRow("Toplam Alis", toplamAlis))
-    sb.append(labelValueRow("Odenen Masraf", odenenMasraf))
-    sb.append(labelValueRow("Bekleyen Masraf", bekleyenMasraf))
-    sb.append(labelValueRow("Toplam Masraf", toplamMasraf))
+    sb.append(labelValueRow("Toplam Masraf", toplamMasraf)) // 🌟 Ödenen/bekleyen satırları temizlendi
     sb.append(labelValueRow("Brut Kar (Satis - Alis)", brutKar))
     sb.append(row(""))
     sb.append(
@@ -75,57 +66,55 @@ fun excelRaporuOlustur(
 
     // ---- SATIŞLAR ----
     sb.append("<Worksheet ss:Name=\"Satislar\">\n<Table>\n")
-    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"200\"/><Column ss:Width=\"120\"/><Column ss:Width=\"120\"/>\n")
-    sb.append(headerRow("Tarih", "Musteri", "Odeme Turu", "Tutar"))
+    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"200\"/><Column ss:Width=\"120\"/>\n")
+    sb.append(headerRow("Tarih", "Musteri", "Tutar"))
     satislar.forEach { s ->
         sb.append(
             row(
                 textCell(formatTarih(s.tarih)) +
                         textCell(s.musteriAdi) +
-                        textCell(s.odemeTuru) +
                         moneyCell(s.toplamTutar)
             )
         )
     }
-    sb.append(totalRow("TOPLAM", toplamSatis, mergeAcross = 2))
+    sb.append(totalRow("TOPLAM", toplamSatis, mergeAcross = 1))
     sb.append(freezeHeader())
     sb.append("</Table>\n</Worksheet>\n")
 
     // ---- ALIŞLAR ----
     sb.append("<Worksheet ss:Name=\"Alislar\">\n<Table>\n")
-    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"200\"/><Column ss:Width=\"120\"/><Column ss:Width=\"120\"/>\n")
-    sb.append(headerRow("Tarih", "Tedarikci", "Odeme Turu", "Tutar"))
+    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"200\"/><Column ss:Width=\"120\"/>\n")
+    sb.append(headerRow("Tarih", "Tedarikci", "Tutar"))
     alislar.forEach { a ->
         sb.append(
             row(
                 textCell(formatTarih(a.tarih)) +
                         textCell(a.tedarikciAdi) +
-                        textCell(a.odemeTuru) +
                         moneyCell(a.toplamTutar)
             )
         )
     }
-    sb.append(totalRow("TOPLAM", toplamAlis, mergeAcross = 2))
+    sb.append(totalRow("TOPLAM", toplamAlis, mergeAcross = 1))
     sb.append(freezeHeader())
     sb.append("</Table>\n</Worksheet>\n")
 
     // ---- MASRAFLAR ----
     sb.append("<Worksheet ss:Name=\"Masraflar\">\n<Table>\n")
-    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"140\"/><Column ss:Width=\"220\"/><Column ss:Width=\"100\"/><Column ss:Width=\"120\"/><Column ss:Width=\"120\"/>\n")
-    sb.append(headerRow("Tarih", "Kategori", "Aciklama", "Durum", "Son Odeme Tarihi", "Tutar"))
+    // 🌟 6 sütundan yeni şemaya uygun olacak şekilde 4 sütuna düşürüldü ve genişlikleri ayarlandı
+    sb.append("<Column ss:Width=\"120\"/><Column ss:Width=\"150\"/><Column ss:Width=\"250\"/><Column ss:Width=\"120\"/>\n")
+    sb.append(headerRow("Tarih", "Kategori", "Aciklama", "Tutar"))
     masraflar.forEach { m ->
         sb.append(
             row(
                 textCell(formatTarih(m.tarih)) +
                         textCell(m.kategori) +
                         textCell(m.aciklama) +
-                        textCell(if (m.odendiMi == 1L) "Odendi" else "Bekliyor") +
-                        textCell(if (m.sonOdemeTarihi.isNotBlank()) formatTarih(m.sonOdemeTarihi) else "-") +
                         moneyCell(m.tutar)
             )
         )
     }
-    sb.append(totalRow("TOPLAM", toplamMasraf, mergeAcross = 4))
+    // 🌟 Toplam 4 sütun (0,1,2,3) olduğu için ilk hücrenin 3 sütun kaplaması adına mergeAcross = 2 yapıldı
+    sb.append(totalRow("TOPLAM", toplamMasraf, mergeAcross = 2))
     sb.append(freezeHeader())
     sb.append("</Table>\n</Worksheet>\n")
 

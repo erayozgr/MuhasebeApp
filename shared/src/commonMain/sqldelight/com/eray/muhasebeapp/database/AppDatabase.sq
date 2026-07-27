@@ -1,3 +1,7 @@
+-- ==========================================
+-- 1. TABLO TANIMLAMALARI (TÜM TABLOLAR EN ÜSTTE)
+-- ==========================================
+
 CREATE TABLE UrunEntity (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     barkod TEXT NOT NULL,
@@ -9,16 +13,108 @@ CREATE TABLE UrunEntity (
     kdvOrani INTEGER NOT NULL
 );
 
--- Tüm ürünleri getiren sorgu (Sadece 1 tane kalmalı)
+CREATE TABLE Musteri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad TEXT NOT NULL,
+    telefon TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    bakiye REAL NOT NULL DEFAULT 0.0
+);
+
+CREATE TABLE Tedarikci (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ad TEXT NOT NULL,
+    telefon TEXT NOT NULL,
+    adres TEXT NOT NULL,
+    bakiye REAL NOT NULL DEFAULT 0.0
+);
+
+CREATE TABLE Satis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    musteriId INTEGER,
+    musteriAdi TEXT NOT NULL,
+    tarih TEXT NOT NULL,
+    toplamTutar REAL NOT NULL
+);
+
+CREATE TABLE SatisKalemi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    satisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet INTEGER NOT NULL,
+    birim TEXT NOT NULL DEFAULT 'adet',
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+
+CREATE TABLE Alis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tedarikciId INTEGER,
+    tedarikciAdi TEXT NOT NULL,
+    tarih TEXT NOT NULL,
+    toplamTutar REAL NOT NULL
+);
+
+CREATE TABLE AlisKalemi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet INTEGER NOT NULL,
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+
+CREATE TABLE Masraf (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kategori TEXT NOT NULL,
+    aciklama TEXT NOT NULL,
+    tutar REAL NOT NULL,
+    tarih TEXT NOT NULL
+);
+
+CREATE TABLE StokHareketi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    hareketTuru TEXT NOT NULL,
+    miktar INTEGER NOT NULL,
+    birimFiyat REAL NOT NULL DEFAULT 0.0,
+    aciklama TEXT NOT NULL,
+    tarih TEXT NOT NULL
+);
+
+-- Müşteriden alınan ödemeleri kronolojik loglamak için eklendi
+CREATE TABLE Tahsilat (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    musteriId INTEGER,
+    musteriAdi TEXT NOT NULL,
+    tutar REAL NOT NULL,
+    tarih TEXT NOT NULL
+);
+
+-- Tedarikçiye yapılan ödemeleri kronolojik loglamak için eklendi
+CREATE TABLE TedarikciOdemesi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tedarikciId INTEGER,
+    tedarikciAdi TEXT NOT NULL,
+    tutar REAL NOT NULL,
+    tarih TEXT NOT NULL
+);
+
+-- ==========================================
+-- 2. SORGU TANIMLAMALARI (QUERIES)
+-- ==========================================
+
+-- --- Ürün Sorguları ---
 selectAllUrun:
 SELECT * FROM UrunEntity ORDER BY ad ASC;
 
--- Yeni ürün ekleme sorgusu
 insertUrun:
 INSERT INTO UrunEntity(barkod, ad, alisFiyati, satisFiyati, stokAdedi, birim, kdvOrani)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
--- İsim veya barkoda göre arama sorgusu (Sadece 1 tane kalmalı)
 searchUrun:
 SELECT * FROM UrunEntity
 WHERE ad LIKE '%' || :aramaMetni || '%' OR barkod LIKE '%' || :aramaMetni || '%'
@@ -38,15 +134,10 @@ WHERE id = :id;
 deleteUrun:
 DELETE FROM UrunEntity WHERE id = :id;
 
+updateUrunStok:
+UPDATE UrunEntity SET stokAdedi = :stokAdedi WHERE id = :id;
 
-CREATE TABLE Musteri (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ad TEXT NOT NULL,
-    telefon TEXT NOT NULL,
-    adres TEXT NOT NULL,
-    bakiye REAL NOT NULL DEFAULT 0.0
-);
-
+-- --- Müşteri Sorguları ---
 selectAllMusteri:
 SELECT * FROM Musteri ORDER BY ad ASC;
 
@@ -70,15 +161,7 @@ SET ad = :ad,
     adres = :adres
 WHERE id = :id;
 
-
-CREATE TABLE Tedarikci (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ad TEXT NOT NULL,
-    telefon TEXT NOT NULL,
-    adres TEXT NOT NULL,
-    bakiye REAL NOT NULL DEFAULT 0.0
-);
-
+-- --- Tedarikçi Sorguları ---
 selectAllTedarikci:
 SELECT * FROM Tedarikci ORDER BY ad ASC;
 
@@ -102,28 +185,7 @@ SET ad = :ad,
     adres = :adres
 WHERE id = :id;
 
-
-
-CREATE TABLE Satis (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    musteriId INTEGER,
-    musteriAdi TEXT NOT NULL,
-    tarih TEXT NOT NULL,
-    toplamTutar REAL NOT NULL,
-    odemeTuru TEXT NOT NULL
-);
-
-CREATE TABLE SatisKalemi (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    satisId INTEGER NOT NULL,
-    urunId INTEGER NOT NULL,
-    urunAdi TEXT NOT NULL,
-    adet INTEGER NOT NULL,
-    birim TEXT NOT NULL DEFAULT 'adet',
-    birimFiyat REAL NOT NULL,
-    toplam REAL NOT NULL
-);
-
+-- --- Satış Sorguları ---
 selectAllSatis:
 SELECT * FROM Satis ORDER BY id DESC;
 
@@ -131,8 +193,8 @@ selectKalemlerBySatisId:
 SELECT * FROM SatisKalemi WHERE satisId = :satisId;
 
 insertSatis:
-INSERT INTO Satis(musteriId, musteriAdi, tarih, toplamTutar, odemeTuru)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO Satis(musteriId, musteriAdi, tarih, toplamTutar)
+VALUES (?, ?, ?, ?);
 
 insertSatisKalemi:
 INSERT INTO SatisKalemi(satisId, urunId, urunAdi, adet, birim, birimFiyat, toplam)
@@ -141,29 +203,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 lastInsertId:
 SELECT last_insert_rowid();
 
-updateUrunStok:
-UPDATE UrunEntity SET stokAdedi = :stokAdedi WHERE id = :id;
-
-
-CREATE TABLE Alis (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tedarikciId INTEGER,
-    tedarikciAdi TEXT NOT NULL,
-    tarih TEXT NOT NULL,
-    toplamTutar REAL NOT NULL,
-    odemeTuru TEXT NOT NULL
-);
-
-CREATE TABLE AlisKalemi (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    alisId INTEGER NOT NULL,
-    urunId INTEGER NOT NULL,
-    urunAdi TEXT NOT NULL,
-    adet INTEGER NOT NULL,
-    birimFiyat REAL NOT NULL,
-    toplam REAL NOT NULL
-);
-
+-- --- Alış Sorguları ---
 selectAllAlis:
 SELECT * FROM Alis ORDER BY id DESC;
 
@@ -171,8 +211,8 @@ selectKalemlerByAlisId:
 SELECT * FROM AlisKalemi WHERE alisId = :alisId;
 
 insertAlis:
-INSERT INTO Alis(tedarikciId, tedarikciAdi, tarih, toplamTutar, odemeTuru)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO Alis(tedarikciId, tedarikciAdi, tarih, toplamTutar)
+VALUES (?, ?, ?, ?);
 
 insertAlisKalemi:
 INSERT INTO AlisKalemi(alisId, urunId, urunAdi, adet, birimFiyat, toplam)
@@ -181,46 +221,44 @@ VALUES (?, ?, ?, ?, ?, ?);
 lastInsertIdAlis:
 SELECT last_insert_rowid();
 
-
-CREATE TABLE Masraf (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kategori TEXT NOT NULL,
-    aciklama TEXT NOT NULL,
-    tutar REAL NOT NULL,
-    tarih TEXT NOT NULL,
-    odendiMi INTEGER NOT NULL DEFAULT 0,
-    sonOdemeTarihi TEXT NOT NULL DEFAULT ''
-);
-
+-- --- Masraf Sorguları ---
 selectAllMasraf:
 SELECT * FROM Masraf ORDER BY id DESC;
 
 insertMasraf:
-INSERT INTO Masraf(kategori, aciklama, tutar, tarih, odendiMi, sonOdemeTarihi)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO Masraf(kategori, aciklama, tutar, tarih)
+VALUES (?, ?, ?, ?);
 
 deleteMasraf:
 DELETE FROM Masraf WHERE id = ?;
 
-updateMasrafOdemeDurumu:
-UPDATE Masraf SET odendiMi = :odendiMi WHERE id = :id;
 
-
-
-CREATE TABLE StokHareketi (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    urunId INTEGER NOT NULL,
-    urunAdi TEXT NOT NULL,
-    hareketTuru TEXT NOT NULL,
-    miktar INTEGER NOT NULL,
-    birimFiyat REAL NOT NULL DEFAULT 0.0,
-    aciklama TEXT NOT NULL,
-    tarih TEXT NOT NULL
-);
-
+-- --- Stok Hareketi Sorguları ---
 selectAllStokHareketi:
 SELECT * FROM StokHareketi ORDER BY id DESC;
 
 insertStokHareketi:
 INSERT INTO StokHareketi(urunId, urunAdi, hareketTuru, miktar, birimFiyat, aciklama, tarih)
 VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- --- Tahsilat Sorguları ---
+selectAllTahsilat:
+SELECT * FROM Tahsilat ORDER BY id DESC;
+
+insertTahsilat:
+INSERT INTO Tahsilat(musteriId, musteriAdi, tutar, tarih)
+VALUES (?, ?, ?, ?);
+
+deleteTahsilat:
+DELETE FROM Tahsilat WHERE id = ?;
+
+-- --- Tedarikçi Ödemesi Sorguları ---
+selectAllTedarikciOdemesi:
+SELECT * FROM TedarikciOdemesi ORDER BY id DESC;
+
+insertTedarikciOdemesi:
+INSERT INTO TedarikciOdemesi(tedarikciId, tedarikciAdi, tutar, tarih)
+VALUES (?, ?, ?, ?);
+
+deleteTedarikciOdemesi:
+DELETE FROM TedarikciOdemesi WHERE id = ?;

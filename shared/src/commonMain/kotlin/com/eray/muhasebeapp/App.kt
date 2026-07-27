@@ -7,8 +7,16 @@ import com.eray.muhasebeapp.database.shared.AppDatabase
 @Composable
 fun App(
     database: AppDatabase,
-    guncelTarih: String // Bu parametreyi buraya da ekledik
+    platformDbManager: PlatformDatabaseManager,
+    guncelTarih: String,
+    simdiMillis: Long,
+    onYedekYukleIstegi: () -> Unit
 ) {
-    // Aldığımız tarihi MainStructure'a emanet ediyoruz
-    MainStructure(database = database, guncelTarih = guncelTarih)
+    MainStructure(
+        database = database,
+        platformDbManager = platformDbManager,
+        guncelTarih = guncelTarih,
+        simdiMillis = simdiMillis,
+        onYedekYukleIstegi = onYedekYukleIstegi
+    )
 }

@@ -2,6 +2,7 @@ package com.eray.muhasebeapp.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -30,15 +32,12 @@ import com.eray.muhasebeapp.telefonLinkOlustur
 import com.eray.muhasebeapp.whatsappLinkOlustur
 import com.eray.muhasebeapp.formatTarih
 
-/**
- * Müşterinin bakiye durumuna göre metin ve renk bilgisini dönen yardımcı fonksiyon.
- * Muhasebe mantığına göre: Bakiye > 0 ise müşteri işletmeye BORÇLUdur (Bizim alacağımızdır).
- */
 private fun bakiyeMetniVeRengi(bakiye: Double): Pair<String, Color> {
+    val formatliBakiye = formatMusteriCariIkiBasamak(bakiye)
     return when {
-        bakiye > 0 -> "₺$bakiye (Borçlu)" to Color(0xFFFF3B30)       // Kırmızı: Takip edilmesi gereken borç
-        bakiye < 0 -> "₺${-bakiye} (Alacaklı)" to Color(0xFF007AFF)   // Mavi: Müşteri içeride artıda
-        else -> "₺0.0 (Dengede)" to Color(0xFF34C759)                // Yeşil: Hesap kapalı, temiz
+        bakiye > 0 -> "₺$formatliBakiye (Borçlu)" to Color(0xFFFF3B30)
+        bakiye < 0 -> "₺${formatMusteriCariIkiBasamak(-bakiye)} (Alacaklı)" to Color(0xFF007AFF)
+        else -> "₺0.00 (Dengede)" to Color(0xFF34C759)
     }
 }
 
@@ -57,10 +56,31 @@ fun MusterilerScreen(
     var detayGosterilenMusteri by remember { mutableStateOf<Musteri?>(null) }
     var duzenlenenMusteri by remember { mutableStateOf<Musteri?>(null) }
     var bakiyeDuzenlenenMusteri by remember { mutableStateOf<Musteri?>(null) }
+    var tahsilatMusteri by remember { mutableStateOf<Musteri?>(null) }
+    var raporMusteri by remember { mutableStateOf<Musteri?>(null) }
     var silinecekMusteri by remember { mutableStateOf<Musteri?>(null) }
+
+    // Sağa kaydırarak geri dönme (Swipe Back) takibi için birikimli drag durumu
+    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
+        modifier = Modifier.pointerInput(Unit) {
+            detectHorizontalDragGestures(
+                onDragStart = { horizontalDragAccumulator = 0f },
+                onDragEnd = {
+                    // Sağa doğru yeterli miktarda kaydırıldıysa tetiklenir
+                    if (horizontalDragAccumulator > 150f) {
+                        onNavigateBack()
+                    }
+                },
+                onDragCancel = { horizontalDragAccumulator = 0f },
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    horizontalDragAccumulator += dragAmount
+                }
+            )
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Müşteriler", fontWeight = FontWeight.Bold, color = Color.Black) },
@@ -83,7 +103,6 @@ fun MusterilerScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // ÜST ÖZET KARTI
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -102,7 +121,8 @@ fun MusterilerScreen(
                         Text("Toplam Müşteri Borcu", fontSize = 13.sp, color = Color(0xFF8E8E93))
                         val toplamBakiye = musteriler.sumOf { it.bakiye }
                         Text(
-                            "₺$toplamBakiye",
+                            // 🎯 DEĞİŞTİRİLDİ: Toplam borç virgülden sonra net iki basamak olarak biçimlendirildi
+                            "₺${formatMusteriCariIkiBasamak(toplamBakiye)}",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (toplamBakiye > 0) Color(0xFFFF9500) else Color(0xFF34C759)
@@ -156,6 +176,14 @@ fun MusterilerScreen(
             onBakiyeDuzenle = {
                 bakiyeDuzenlenenMusteri = musteri
                 detayGosterilenMusteri = null
+            },
+            onTahsilatGir = {
+                tahsilatMusteri = musteri
+                detayGosterilenMusteri = null
+            },
+            onRaporGoster = {
+                raporMusteri = musteri
+                detayGosterilenMusteri = null
             }
         )
     }
@@ -184,7 +212,33 @@ fun MusterilerScreen(
         )
     }
 
-    // --- Silme Onay Dialog ---
+    tahsilatMusteri?.let { musteri ->
+        TahsilatGirDialog(
+            musteri = musteri,
+            onDismiss = { tahsilatMusteri = null },
+            onKaydet = { tahsilatTutari ->
+                database.appDatabaseQueries.updateMusteriBakiye(musteri.bakiye - tahsilatTutari, musteri.id)
+
+                database.appDatabaseQueries.insertTahsilat(
+                    musteriId = musteri.id,
+                    musteriAdi = musteri.ad,
+                    tutar = tahsilatTutari,
+                    tarih = com.eray.muhasebeapp.getEpochMillis().toString()
+                )
+
+                yenilemeTetikleyici++
+                tahsilatMusteri = null
+            }
+        )
+    }
+    raporMusteri?.let { musteri ->
+        TarihAralikliSatisRaporDialog(
+            database = database,
+            musteri = musteri,
+            onDismiss = { raporMusteri = null }
+        )
+    }
+
     silinecekMusteri?.let { musteri ->
         AlertDialog(
             onDismissRequest = { silinecekMusteri = null },
@@ -261,7 +315,9 @@ fun MusteriDetayDialog(
     musteri: Musteri,
     onDismiss: () -> Unit,
     onDuzenle: () -> Unit,
-    onBakiyeDuzenle: () -> Unit
+    onBakiyeDuzenle: () -> Unit,
+    onTahsilatGir: () -> Unit,
+    onRaporGoster: () -> Unit
 ) {
     val urlAcici = rememberUrlAcici()
     val (bakiyeFormatli, renk) = bakiyeMetniVeRengi(musteri.bakiye)
@@ -292,7 +348,7 @@ fun MusteriDetayDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+            Column(modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
                 Text(musteri.adres, fontSize = 13.sp, color = Color(0xFF8E8E93))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -304,8 +360,25 @@ fun MusteriDetayDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // İLETİŞİM VE BAKİYE DÜZENLEME AKSIYONLARI
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IletisimButonu(
+                        baslik = "Tahsilat Gir (Ödeme Al)",
+                        ikon = Icons.Default.Payments,
+                        renk = Color(0xFF34C759),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        onTahsilatGir()
+                    }
+
+                    IletisimButonu(
+                        baslik = "Tarih Aralıklı Satış Detayı",
+                        ikon = Icons.Default.DateRange,
+                        renk = Color(0xFFD435CD),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        onRaporGoster()
+                    }
+
                     IletisimButonu(
                         baslik = "Doğrudan Bakiye/Borç Düzenle",
                         ikon = Icons.Default.Edit,
@@ -337,7 +410,7 @@ fun MusteriDetayDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
-                    "GEÇMİŞ SATIŞLAR",
+                    "GEÇMİŞ SATIŞLAR (SON 6)",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF8E8E93)
@@ -345,7 +418,7 @@ fun MusteriDetayDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 if (gecmisSatislar.isEmpty()) {
-                    Text("Henüz veresiye/kayıtlı satış yapılmadı", fontSize = 13.sp, color = Color(0xFF8E8E93))
+                    Text("Henüz kayıtlı satış yapılmadı", fontSize = 13.sp, color = Color(0xFF8E8E93))
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         gecmisSatislar.forEach { satis ->
@@ -367,6 +440,229 @@ fun MusteriDetayDialog(
 }
 
 @Composable
+fun TahsilatGirDialog(
+    musteri: Musteri,
+    onDismiss: () -> Unit,
+    onKaydet: (tutar: Double) -> Unit
+) {
+    var tutarText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Tahsilat İşle", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Text("“${musteri.ad}” isimli müşteriden nakit ödeme alıyorsunuz.", fontSize = 13.sp, color = Color(0xFF8E8E93))
+                Text("Güncel Borç: ₺${formatMusteriCariIkiBasamak(musteri.bakiye)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                OutlinedTextField(
+                    value = tutarText,
+                    onValueChange = { tutarText = it },
+                    label = { Text("Alınan Tutar (₺)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val tutar = tutarText.toDoubleOrNull() ?: 0.0
+                if (tutar > 0.0) {
+                    onKaydet(tutar)
+                }
+            }) { Text("Tahsilatı Kaydet", color = Color(0xFF34C759), fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("İptal", color = Color(0xFF8E8E93)) }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TarihAralikliSatisRaporDialog(
+    database: AppDatabase,
+    musteri: Musteri,
+    onDismiss: () -> Unit
+) {
+    var baslangicSeciciAcik by remember { mutableStateOf(false) }
+    var bitisSeciciAcik by remember { mutableStateOf(false) }
+
+    val baslangicTarihState = rememberDatePickerState()
+    val bitisTarihState = rememberDatePickerState()
+
+    val tumSatislar = remember(musteri.id) {
+        database.appDatabaseQueries.selectSatisByMusteriId(musteri.id).executeAsList()
+    }
+
+    val filtrelenmisSatislar = remember(tumSatislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
+        tumSatislar.filter { satis ->
+            val satisZamani = satis.tarih.toLongOrNull() ?: 0L
+            val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { satisZamani >= it } ?: true
+            val bitisKosulu = bitisTarihState.selectedDateMillis?.let { satisZamani <= (it + 86400000L) } ?: true
+            baslangicKosulu && bitisKosulu
+        }
+    }
+
+    val gruplanmisSatislar = remember(filtrelenmisSatislar) {
+        filtrelenmisSatislar.groupBy { satis -> formatTarih(satis.tarih).substringBefore(" ") }
+    }
+
+    val toplamRaporTutari = remember(filtrelenmisSatislar) {
+        filtrelenmisSatislar.sumOf { satis ->
+            database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList().sumOf { it.toplam }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Tarih Bazlı Satış Detayı", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                Text("${musteri.ad} için tarih filtreli satış raporu.", fontSize = 13.sp, color = Color(0xFF8E8E93))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { baslangicSeciciAcik = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val basMetni = baslangicTarihState.selectedDateMillis?.let { formatTarih(it.toString()).substringBefore(" ") } ?: "Başlangıç Seç"
+                        Text(basMetni, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+
+                    Button(
+                        onClick = { bitisSeciciAcik = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val bitMetni = bitisTarihState.selectedDateMillis?.let { formatTarih(it.toString()).substringBefore(" ") } ?: "Bitiş Seç"
+                        Text(bitMetni, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = Color(0xFFF2F2F7), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Dönem Toplam Satış:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text("₺${formatMusteriCariIkiBasamak(toplamRaporTutari)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34C759))
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (gruplanmisSatislar.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Seçilen aralıkta satış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        gruplanmisSatislar.forEach { (tarihBasligi, satislarListesi) ->
+                            item {
+                                Text(
+                                    text = tarihBasligi,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                                )
+                            }
+                            items(satislarListesi) { satis ->
+                                val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList()
+                                val satisSaati = formatSaat(satis.tarih)
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF2F2F7), RoundedCornerShape(8.dp))
+                                        .padding(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Satış",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF8E8E93)
+                                        )
+                                        Text(
+                                            text = satisSaati,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF007AFF)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    HorizontalDivider(color = Color(0xFFE5E5EA), thickness = 0.5.dp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    kalemler.forEach { kalem ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${kalem.urunAdi} (${kalem.adet} ${kalem.birim} × ₺${formatMusteriCariIkiBasamak(kalem.birimFiyat)})",
+                                                fontSize = 13.sp,
+                                                color = Color.Black,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "₺${formatMusteriCariIkiBasamak(kalem.toplam)}",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF3C3C43)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Kapat", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
+        }
+    )
+
+    if (baslangicSeciciAcik) {
+        DatePickerDialog(
+            onDismissRequest = { baslangicSeciciAcik = false },
+            confirmButton = {
+                TextButton(onClick = { baslangicSeciciAcik = false }) { Text("Seç") }
+            }
+        ) { DatePicker(state = baslangicTarihState) }
+    }
+
+    if (bitisSeciciAcik) {
+        DatePickerDialog(
+            onDismissRequest = { bitisSeciciAcik = false },
+            confirmButton = {
+                TextButton(onClick = { bitisSeciciAcik = false }) { Text("Seç") }
+            }
+        ) { DatePicker(state = bitisTarihState) }
+    }
+}
+
+@Composable
 fun GecmisSatisKarti(satis: Satis, kalemler: List<SatisKalemi>) {
     Column(
         modifier = Modifier
@@ -379,13 +675,13 @@ fun GecmisSatisKarti(satis: Satis, kalemler: List<SatisKalemi>) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(satis.odemeTuru, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3C3C43))
+            Text("Satış", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3C3C43))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    "₺${satis.toplamTutar}",
+                    "₺${formatMusteriCariIkiBasamak(satis.toplamTutar)}",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (satis.odemeTuru == "Veresiye") Color(0xFFFF9500) else Color(0xFF34C759)
+                    color = Color(0xFF34C759)
                 )
                 Text(formatTarih(satis.tarih), fontSize = 10.sp, color = Color(0xFF8E8E93))
             }
@@ -401,13 +697,13 @@ fun GecmisSatisKarti(satis: Satis, kalemler: List<SatisKalemi>) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "${kalem.urunAdi} — ${kalem.adet} ${kalem.birim} × ₺${kalem.birimFiyat}",
+                        "${kalem.urunAdi} — ${kalem.adet} ${kalem.birim} × ₺${formatMusteriCariIkiBasamak(kalem.birimFiyat)}",
                         fontSize = 12.sp,
                         color = Color(0xFF8E8E93),
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        "₺${kalem.toplam}",
+                        "₺${formatMusteriCariIkiBasamak(kalem.toplam)}",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF3C3C43)
@@ -580,4 +876,30 @@ fun BakiyeDuzenleDialog(
             TextButton(onClick = onDismiss) { Text("İptal", color = Color(0xFF8E8E93)) }
         }
     )
+}
+
+fun formatSaat(epochMillisStr: String): String {
+    val millis = epochMillisStr.toLongOrNull() ?: return ""
+
+    val toplamSaniye = millis / 1000
+    val gunIciSaniye = toplamSaniye % 86400
+
+    val toplamSaatSaniye = gunIciSaniye + (3 * 3600)
+    val duzeltilmisSaniye = if (toplamSaatSaniye >= 86400) toplamSaatSaniye - 86400 else toplamSaatSaniye
+
+    val saat = (duzeltilmisSaniye / 3600).toString().padStart(2, '0')
+    val dakika = ((duzeltilmisSaniye % 3600) / 60).toString().padStart(2, '0')
+
+    return "$saat:$dakika"
+}
+
+//  YENİ EKLEDİ / KMP UYUMLU: Bakiyeleri virgülden sonra net 2 basamak formatlar
+private fun formatMusteriCariIkiBasamak(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlakDeger = if (negatifMi) -deger else deger
+    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
+    val tamKisim = yuvarlanmis.toLong()
+    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
+    val kesirStr = kesirKisim.toString().padStart(2, '0')
+    return "${if (negatifMi) "-" else ""}$tamKisim.$kesirStr"
 }

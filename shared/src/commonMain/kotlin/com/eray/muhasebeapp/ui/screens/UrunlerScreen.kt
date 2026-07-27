@@ -2,11 +2,13 @@ package com.eray.muhasebeapp.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Add
@@ -19,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -26,13 +29,6 @@ import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import com.eray.muhasebeapp.database.UrunEntity
 import com.eray.muhasebeapp.getEpochMillis
-
-fun Double.toParaFormat(): String {
-    val tamKisim = this.toInt()
-    val kurusKisimi = ((this - tamKisim) * 100).toInt()
-    val kurusStr = if (kurusKisimi < 10) "0$kurusKisimi" else "$kurusKisimi"
-    return "$tamKisim,$kurusStr"
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,11 +42,11 @@ fun UrunlerScreen(
     var silinecekUrun by remember { mutableStateOf<UrunEntity?>(null) }
 
     var refreshTrigger by remember { mutableStateOf(0) }
-
-    // 🎯 Kritik Stok Filtresi Açık mı Kapsalı mı State'i
     var kritikStokFiltresiAcik by remember { mutableStateOf(false) }
 
-    // Ürün listesini hem aramaya, hem refresh tetikleyicisine hem de kritik stok filtresine bağladık
+    // Sağa kaydırarak geri dönme (Swipe Back) durumu
+    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+
     val urunListesi by remember(aramaMetni, refreshTrigger, kritikStokFiltresiAcik) {
         derivedStateOf {
             val hamListe = if (aramaMetni.isEmpty()) {
@@ -59,7 +55,6 @@ fun UrunlerScreen(
                 database.appDatabaseQueries.searchUrun(aramaMetni).executeAsList()
             }
 
-            // Eğer filtre açıksa sadece stoğu 5 ve altında olanları filtrele
             if (kritikStokFiltresiAcik) {
                 hamListe.filter { it.stokAdedi <= 5L }
             } else {
@@ -68,7 +63,26 @@ fun UrunlerScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF2F2F7))) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF2F2F7))
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { horizontalDragAccumulator = 0f },
+                    onDragEnd = {
+                        if (horizontalDragAccumulator > 150f) {
+                            onNavigateBack()
+                        }
+                    },
+                    onDragCancel = { horizontalDragAccumulator = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        horizontalDragAccumulator += dragAmount
+                    }
+                )
+            }
+    ) {
 
         // --- Üst Bar ---
         Box(
@@ -118,29 +132,26 @@ fun UrunlerScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            OzetKart(
+            UrunOzetKart(
                 baslik = "Toplam Ürün",
                 deger = "${tumUrunler.size}",
                 renk = Color(0xFF007AFF),
                 modifier = Modifier.weight(1f)
             )
-            OzetKart(
+            UrunOzetKart(
                 baslik = "Stok Değeri",
-                deger = "₺${toplamStokDeger.toParaFormat()}",
+                deger = "₺${toplamStokDeger.toUrunParaFormat()}",
                 renk = Color(0xFF34C759),
                 modifier = Modifier.weight(1f)
             )
-
-            // 🎯 Kritik Stok Özet Kartı artık tıklanabilir interaktif bir buton oldu
-            OzetKart(
+            UrunOzetKart(
                 baslik = if (kritikStokFiltresiAcik) "Filtreyi Kaldır" else "Kritik Stok",
                 deger = "$kritikStokSayisi",
-                // Aktifken kırmızı, pasifken duruma göre gri/kırmızı renk alır
                 renk = if (kritikStokFiltresiAcik) Color.White else (if (kritikStokSayisi > 0) Color(0xFFFF3B30) else Color(0xFF8E8E93)),
                 containerColor = if (kritikStokFiltresiAcik) Color(0xFFFF3B30) else Color.White,
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { kritikStokFiltresiAcik = !kritikStokFiltresiAcik } // Tıklanınca durumu tersine çevirir
+                    .clickable { kritikStokFiltresiAcik = !kritikStokFiltresiAcik }
             )
         }
 
@@ -299,7 +310,7 @@ fun UrunlerScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UrunFormDialog(
+private fun UrunFormDialog(
     baslik: String,
     mevcutBarkod: String = "",
     mevcutAd: String = "",
@@ -453,9 +464,9 @@ fun UrunFormDialog(
     )
 }
 
-// 🎯 Dinamik Arka Plan Rengi Alan Geliştirilmiş OzetKart
+// 🎯 ÇAKIŞMAYI ÖNLEMEK İÇİN İSMİ DEĞİŞTİRİLDİ VE PRIVATE YAPILDI
 @Composable
-fun OzetKart(
+private fun UrunOzetKart(
     baslik: String,
     deger: String,
     renk: Color,
@@ -484,7 +495,7 @@ fun OzetKart(
 }
 
 @Composable
-fun UrunSatiri(
+private fun UrunSatiri(
     urun: UrunEntity,
     onDuzenle: () -> Unit,
     onSil: () -> Unit
@@ -509,7 +520,7 @@ fun UrunSatiri(
 
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp)) {
             Text(
-                text = "₺${urun.satisFiyati.toParaFormat()}",
+                text = "₺${urun.satisFiyati.toUrunParaFormat()}",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.Black
@@ -541,4 +552,14 @@ fun UrunSatiri(
             }
         }
     }
+}
+
+private fun Double.toUrunParaFormat(): String {
+    val negatifMi = this < 0
+    val mutlakDeger = if (negatifMi) -this else this
+    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
+    val tamKisim = yuvarlanmis.toLong()
+    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
+    val kesirStr = kesirKisim.toString().padStart(2, '0')
+    return "${if (negatifMi) "-" else ""}$tamKisim,$kesirStr"
 }

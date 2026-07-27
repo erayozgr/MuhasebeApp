@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.eray.muhasebeapp.PlatformDatabaseManager
 import com.eray.muhasebeapp.ui.screens.AnaMenuScreen
 import com.eray.muhasebeapp.ui.screens.UrunlerScreen
 import com.eray.muhasebeapp.database.shared.AppDatabase
@@ -19,19 +20,26 @@ import com.eray.muhasebeapp.ui.screens.StokScreen
 @Composable
 fun MainStructure(
     database: AppDatabase,
-    guncelTarih: String // Üst katmandan (App.kt) gelen canlı tarih
+    platformDbManager: PlatformDatabaseManager,
+    guncelTarih: String,
+    simdiMillis: Long,
+    onYedekYukleIstegi: () -> Unit
 ) {
+
+    // ----------------------------------
+
     var currentScreen by remember { mutableStateOf(0) }
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
-
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
             when (currentScreen) {
                 0 -> AnaMenuScreen(
                     database = database,
+                    platformDbManager = platformDbManager,
                     guncelTarih = guncelTarih,
+                    onYedekYukleIstegi = onYedekYukleIstegi,
                     onNavigateToUrunler = { currentScreen = 1 },
                     onNavigateToMusteriler = { currentScreen = 2 },
                     onNavigateToTedarikciler = { currentScreen = 3},
@@ -63,10 +71,12 @@ fun MainStructure(
                 )
                 6 -> MasrafScreen(
                     database = database,
+                    simdiMillis = simdiMillis,
                     onNavigateBack = { currentScreen = 0 }
                 )
                 7 -> RaporlamaScreen(
                     database = database,
+                    simdiMillis = simdiMillis,
                     onNavigateBack = { currentScreen = 0 }
                 )
                 8 -> StokScreen(

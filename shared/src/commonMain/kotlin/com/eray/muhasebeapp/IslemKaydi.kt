@@ -6,13 +6,16 @@ import com.eray.muhasebeapp.database.Satis
 import com.eray.muhasebeapp.database.StokHareketi
 import com.eray.muhasebeapp.database.AlisKalemi
 import com.eray.muhasebeapp.database.SatisKalemi
-
+import com.eray.muhasebeapp.database.Tahsilat
 
 sealed class IslemKaydi(val tarih: String, val tutar: Double) {
     data class SatisIslemi(val satis: Satis, val kalemler: List<SatisKalemi> = emptyList()) : IslemKaydi(satis.tarih, satis.toplamTutar)
     data class AlisIslemi(val alis: Alis, val kalemler: List<AlisKalemi> = emptyList()) : IslemKaydi(alis.tarih, alis.toplamTutar)
     data class MasrafIslemi(val masraf: Masraf) : IslemKaydi(masraf.tarih, masraf.tutar)
     data class StokIslemi(val stokHareketi: StokHareketi) : IslemKaydi(stokHareketi.tarih, stokHareketi.birimFiyat * stokHareketi.miktar)
+
+    // 🌟 DÜZELTİLDİ: Parametreler doğrudan IslemKaydi yapıcısına gönderildi, gövdedeki override kaldırıldı.
+    data class TahsilatIslemi(val tahsilat: Tahsilat) : IslemKaydi(tahsilat.tarih, tahsilat.tutar)
 }
 
 // CSV içeriğini komple oluşturan fonksiyon - tamamen commonMain, platform bağımsız
@@ -23,19 +26,19 @@ fun csvRaporuOlustur(
     stokHareketleri: List<StokHareketi> = emptyList()
 ): String {
     val sb = StringBuilder()
-    sb.appendLine("Tip;Tarih;Karsi Taraf / Kategori;Tutar;Odeme Turu")
+    sb.appendLine("Tip;Tarih;Karsi Taraf / Kategori;Tutar")
 
     satislar.forEach {
-        sb.appendLine("Satis;${it.tarih};${it.musteriAdi};${it.toplamTutar};${it.odemeTuru}")
+        sb.appendLine("Satis;${it.tarih};${it.musteriAdi};${it.toplamTutar}")
     }
     alislar.forEach {
-        sb.appendLine("Alis;${it.tarih};${it.tedarikciAdi};${it.toplamTutar};${it.odemeTuru}")
+        sb.appendLine("Alis;${it.tarih};${it.tedarikciAdi};${it.toplamTutar}")
     }
     masraflar.forEach {
-        sb.appendLine("Masraf;${it.tarih};${it.kategori} - ${it.aciklama};${it.tutar};-")
+        sb.appendLine("Masraf;${it.tarih};${it.kategori} - ${it.aciklama};${it.tutar}")
     }
     stokHareketleri.forEach {
-        sb.appendLine("Stok;${it.tarih};${it.urunAdi} (${it.hareketTuru}, ${it.miktar} adet) - ${it.aciklama};${it.birimFiyat * it.miktar};-")
+        sb.appendLine("Stok;${it.tarih};${it.urunAdi} (${it.hareketTuru}, ${it.miktar} adet) - ${it.aciklama};${it.birimFiyat * it.miktar}")
     }
 
     val toplamSatis = satislar.sumOf { it.toplamTutar }
@@ -63,7 +66,6 @@ fun formatTarih(tarih: String): String {
     val saat = (gunIciSaniye / 3600).toString().padStart(2, '0')
     val dakika = ((gunIciSaniye % 3600) / 60).toString().padStart(2, '0')
 
-    // 1970-01-01'den itibaren gün sayısından takvim tarihi (proleptic Gregorian, civil_from_days algoritması)
     var z = gunSayisi + 719468
     val era = (if (z >= 0) z else z - 146096) / 146097
     val doe = z - era * 146097
