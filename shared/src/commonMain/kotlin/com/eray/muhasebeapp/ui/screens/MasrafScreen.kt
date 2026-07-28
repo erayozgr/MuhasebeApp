@@ -31,7 +31,6 @@ import com.eray.muhasebeapp.formatTarih
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Masraf kategorileri ve ikonları
 val masrafKategorileri = listOf(
     "Kira" to Icons.Default.Home,
     "Fatura" to Icons.Default.Receipt,
@@ -50,7 +49,7 @@ private val turkceAylar = listOf(
 )
 
 private fun ayBasligiUret(tarihMillisStr: String): String {
-    val gosterim = formatTarih(tarihMillisStr).substringBefore(" ") // "dd.MM.yyyy"
+    val gosterim = formatTarih(tarihMillisStr).substringBefore(" ")
     val parcalar = gosterim.split(".")
     if (parcalar.size != 3) return "Bilinmeyen Tarih"
     val ay = parcalar[1].toIntOrNull() ?: return "Bilinmeyen Tarih"
@@ -78,10 +77,8 @@ fun MasrafScreen(
     var toplamMasraf by remember { mutableStateOf(0.0) }
     var islemSayisi by remember { mutableStateOf(0) }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) durumu için drag takibi
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    // KMP Uyumlu Default Background Thread aracı
     LaunchedEffect(seciliDonem, seciliFiltre, mevcutLimit, yenilemeTetikleyici) {
         yukleniyor = true
         withContext(Dispatchers.Default) {
@@ -136,7 +133,6 @@ fun MasrafScreen(
             detectHorizontalDragGestures(
                 onDragStart = { horizontalDragAccumulator = 0f },
                 onDragEnd = {
-                    // Sağa doğru yeterli kaydırma yapıldıysa ana menüye dön
                     if (horizontalDragAccumulator > 150f) {
                         onNavigateBack()
                     }
@@ -170,7 +166,6 @@ fun MasrafScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // DÖNEM SEÇİCİ
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -195,7 +190,6 @@ fun MasrafScreen(
                 }
             }
 
-            // ÜST ÖZET KARTLARI
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -204,7 +198,6 @@ fun MasrafScreen(
                 MasrafOzetKart("İşlem Sayısı", "$islemSayisi", Color(0xFF8E8E93), Modifier.weight(1f))
             }
 
-            // KATEGORİ FİLTRE ÇUBUĞU
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -231,7 +224,6 @@ fun MasrafScreen(
                 }
             }
 
-            // LİSTELEME
             if (gruplanmisMasraflar.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(if(yukleniyor) "Yükleniyor..." else "Bu dönemde masraf yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
@@ -453,7 +445,6 @@ private fun MasrafEkleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
                 val temizTutarText = tutarText.replace(',', '.')
                 val tutar = temizTutarText.toDoubleOrNull() ?: 0.0
                 if (tutar <= 0) return@TextButton

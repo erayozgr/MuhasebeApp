@@ -60,7 +60,6 @@ fun MusterilerScreen(
     var raporMusteri by remember { mutableStateOf<Musteri?>(null) }
     var silinecekMusteri by remember { mutableStateOf<Musteri?>(null) }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) takibi için birikimli drag durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
     Scaffold(
@@ -69,7 +68,6 @@ fun MusterilerScreen(
             detectHorizontalDragGestures(
                 onDragStart = { horizontalDragAccumulator = 0f },
                 onDragEnd = {
-                    // Sağa doğru yeterli miktarda kaydırıldıysa tetiklenir
                     if (horizontalDragAccumulator > 150f) {
                         onNavigateBack()
                     }
@@ -459,14 +457,13 @@ fun TahsilatGirDialog(
                     onValueChange = { tutarText = it },
                     label = { Text("Alınan Tutar (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası güncellendi
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
                 val temizTutarText = tutarText.replace(',', '.')
                 val tutar = temizTutarText.toDoubleOrNull() ?: 0.0
                 if (tutar > 0.0) {
@@ -768,7 +765,7 @@ fun MusteriEkleDialog(
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcu (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası güncellendi
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -776,7 +773,6 @@ fun MusteriEkleDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (ad.isNotBlank()) {
-                    // 🎯 iOS klavyesinden gelebilecek virgül riskini ekarte ediyoruz
                     val temizBakiyeText = bakiye.replace(',', '.')
                     onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
                 }
@@ -859,6 +855,7 @@ fun BakiyeDuzenleDialog(
                     onValueChange = { yeniBakiyeText = it },
                     label = { Text("Yeni Net Borç Tutarı (₺)") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası eklendi
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
@@ -870,7 +867,6 @@ fun BakiyeDuzenleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                // 🎯 Hem eksi değerleri koruyor hem de iOS virgülerini noktaya dönüştürüyoruz
                 val temizBakiyeText = yeniBakiyeText.replace(',', '.')
                 val yeniBakiye = temizBakiyeText.toDoubleOrNull()
                 if (yeniBakiye != null) {

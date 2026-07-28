@@ -38,7 +38,6 @@ data class AlisSepetKalemi(
     val toplam: Double get() = alisFiyati * adet
 }
 
-// Sepet boşken gösterilen geçmiş alış kaydı (kalemleriyle birlikte)
 data class GecmisAlisKaydi(
     val alis: Alis,
     val kalemler: List<AlisKalemi>
@@ -62,17 +61,14 @@ fun AlisScreen(
 
     val toplamTutar = sepet.sumOf { it.toplam }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) takibi için drag durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    // 🎯 SEPET BOŞKEN GÖSTERİLEN GEÇMİŞ ALIŞLAR (parça parça / kademeli yüklenir)
     var gecmisTumAlislarHam by remember { mutableStateOf<List<Alis>?>(null) }
     var gecmisLimit by remember { mutableStateOf(20) }
     var gecmisAlislar by remember { mutableStateOf(listOf<GecmisAlisKaydi>()) }
     var gecmisYukleniyor by remember { mutableStateOf(false) }
     var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
 
-    // Sepet boşaldığında (veya limit arttığında) geçmişi ağır iş parçacığında kademeli yükle
     LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
         if (sepet.isEmpty()) {
             gecmisYukleniyor = true
@@ -98,7 +94,6 @@ fun AlisScreen(
             detectHorizontalDragGestures(
                 onDragStart = { horizontalDragAccumulator = 0f },
                 onDragEnd = {
-                    // Sağa doğru yeterli miktarda kaydırıldıysa ana menüye dön
                     if (horizontalDragAccumulator > 150f) {
                         onNavigateBack()
                     }
@@ -133,7 +128,6 @@ fun AlisScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // TEDARİKÇİ SEÇİMİ
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -187,7 +181,6 @@ fun AlisScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (sepet.isEmpty()) {
-                // 🎯 SEPET BOŞ: Geçmiş alışları kademeli (parça parça) göster
                 Text(
                     text = "GEÇMİŞ ALIŞLAR",
                     fontSize = 12.sp,
@@ -262,7 +255,6 @@ fun AlisScreen(
                 }
             }
 
-            // ALT ÖZET VE TAMAMLA BUTONU
             Card(
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -294,7 +286,6 @@ fun AlisScreen(
                                 sepet = listOf()
                                 seciliTedarikci = null
                                 basariliMesajGoster = true
-                                // Yeni alış eklendiği için geçmiş listesi bir dahaki gösterimde tazelensin
                                 gecmisTumAlislarHam = null
                                 gecmisLimit = 20
                             }
@@ -513,7 +504,7 @@ private fun AlisUrunSecDialog(
                         Text(text = seciliUrun?.let { "Öneri: ₺${formatAlisFiyatiIkiBasamak(it.alisFiyati)}" } ?: "0.00")
                     },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Güncellendi
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -539,10 +530,7 @@ private fun AlisUrunSecDialog(
         confirmButton = {
             TextButton(onClick = {
                 val urun = seciliUrun
-
                 val adet = if (adetText.isBlank()) 1 else (adetText.toIntOrNull() ?: 0)
-
-                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
                 val temizFiyatText = fiyatText.replace(',', '.')
                 val girilenFiyat = if (temizFiyatText.isBlank()) (urun?.alisFiyati ?: 0.0) else (temizFiyatText.toDoubleOrNull() ?: 0.0)
 

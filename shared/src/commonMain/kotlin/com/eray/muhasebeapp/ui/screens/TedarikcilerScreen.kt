@@ -455,7 +455,7 @@ fun TedarikciOdemeGirDialog(
                     onValueChange = { tutarText = it },
                     label = { Text("Ödenen Tutar (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -765,7 +765,7 @@ fun TedarikciEkleDialog(
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcumuz (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -848,6 +848,7 @@ fun TedarikciBakiyeDuzenleDialog(
                     onValueChange = { yeniBakiyeText = it },
                     label = { Text("Yeni Net Borç Tutarı (₺)") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(

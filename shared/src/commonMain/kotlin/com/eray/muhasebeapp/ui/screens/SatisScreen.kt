@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.database.shared.AppDatabase
@@ -36,7 +38,6 @@ data class SepetKalemi(
     val toplam: Double get() = satisFiyati * adet
 }
 
-// Sepet boşken gösterilen geçmiş satış kaydı (kalemleriyle birlikte)
 data class GecmisSatisKaydi(
     val satis: Satis,
     val kalemler: List<SatisKalemi>
@@ -60,17 +61,14 @@ fun SatisScreen(
 
     val toplamTutar = sepet.sumOf { it.toplam }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) takibi için drag durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    // 🎯 SEPET BOŞKEN GÖSTERİLEN GEÇMİŞ SATIŞLAR (parça parça / kademeli yüklenir)
     var gecmisTumSatislarHam by remember { mutableStateOf<List<Satis>?>(null) }
     var gecmisLimit by remember { mutableStateOf(20) }
     var gecmisSatislar by remember { mutableStateOf(listOf<GecmisSatisKaydi>()) }
     var gecmisYukleniyor by remember { mutableStateOf(false) }
     var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
 
-    // Sepet boşaldığında (veya limit arttığında) geçmişi ağır iş parçacığında kademeli yükle
     LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
         if (sepet.isEmpty()) {
             gecmisYukleniyor = true
@@ -96,7 +94,6 @@ fun SatisScreen(
             detectHorizontalDragGestures(
                 onDragStart = { horizontalDragAccumulator = 0f },
                 onDragEnd = {
-                    // Sağa doğru 150dp barajı aşıldıysa ana menüye dön
                     if (horizontalDragAccumulator > 150f) {
                         onNavigateBack()
                     }
@@ -131,7 +128,6 @@ fun SatisScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            // MÜŞTERİ SEÇİMİ
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -185,7 +181,6 @@ fun SatisScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (sepet.isEmpty()) {
-                // 🎯 SEPET BOŞ: Geçmiş satışları kademeli (parça parça) göster
                 Text(
                     text = "GEÇMİŞ SATIŞLAR",
                     fontSize = 12.sp,
@@ -291,7 +286,6 @@ fun SatisScreen(
                                 sepet = listOf()
                                 seciliMusteri = null
                                 basariliMesajGoster = true
-                                // Yeni satış eklendiği için geçmiş listesi bir dahaki gösterimde tazelensin
                                 gecmisTumSatislarHam = null
                                 gecmisLimit = 20
                             }
@@ -519,6 +513,7 @@ private fun UrunSecDialog(
                         Text(text = seciliUrun?.let { "Öneri: ₺${it.satisFiyati}" } ?: "0.0")
                     },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Güncellendi
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -528,6 +523,7 @@ private fun UrunSecDialog(
                     label = { Text("Adet") },
                     placeholder = { Text(text = "Öneri: 1") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // 🎯 Güncellendi
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -544,10 +540,7 @@ private fun UrunSecDialog(
         confirmButton = {
             TextButton(onClick = {
                 val urun = seciliUrun
-
                 val adet = if (adetText.isBlank()) 1 else (adetText.toIntOrNull() ?: 0)
-
-                // 🎯 iOS Sayı Klavyesinden gelen virgülü (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
                 val temizFiyatText = fiyatText.replace(',', '.')
                 val girilenFiyat = if (temizFiyatText.isBlank()) (urun?.satisFiyati ?: 0.0) else (temizFiyatText.toDoubleOrNull() ?: 0.0)
 

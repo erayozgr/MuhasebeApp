@@ -44,7 +44,6 @@ fun UrunlerScreen(
     var refreshTrigger by remember { mutableStateOf(0) }
     var kritikStokFiltresiAcik by remember { mutableStateOf(false) }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
     val urunListesi by remember(aramaMetni, refreshTrigger, kritikStokFiltresiAcik) {
@@ -444,7 +443,6 @@ private fun UrunFormDialog(
                         return@Button
                     }
 
-                    // 🎯 iOS Sayı Klavyesinden gelen virgülleri (,) noktaya (.) dönüştürerek güvenli parse ediyoruz
                     val temizAlisText = alis.replace(',', '.')
                     val temizSatisText = satis.replace(',', '.')
 
