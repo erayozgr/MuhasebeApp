@@ -59,6 +59,7 @@ fun MusterilerScreen(
     var tahsilatMusteri by remember { mutableStateOf<Musteri?>(null) }
     var raporMusteri by remember { mutableStateOf<Musteri?>(null) }
     var silinecekMusteri by remember { mutableStateOf<Musteri?>(null) }
+    var genelMusteriDialogAcikMi by remember { mutableStateOf(false) }
 
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
@@ -125,6 +126,36 @@ fun MusterilerScreen(
                             color = if (toplamBakiye > 0) Color(0xFFFF9500) else Color(0xFF34C759)
                         )
                     }
+                }
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp)
+                    .clickable { genelMusteriDialogAcikMi = true }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFF8E8E93).copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Groups, contentDescription = null, tint = Color(0xFF8E8E93))
+                        }
+                        Text("Genel Müşteri Satışları", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF8E8E93))
                 }
             }
 
@@ -233,6 +264,13 @@ fun MusterilerScreen(
             database = database,
             musteri = musteri,
             onDismiss = { raporMusteri = null }
+        )
+    }
+
+    if (genelMusteriDialogAcikMi) {
+        GenelMusteriSatisDialog(
+            database = database,
+            onDismiss = { genelMusteriDialogAcikMi = false }
         )
     }
 
@@ -457,7 +495,7 @@ fun TahsilatGirDialog(
                     onValueChange = { tutarText = it },
                     label = { Text("Alınan Tutar (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası güncellendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -520,6 +558,188 @@ fun TarihAralikliSatisRaporDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
                 Text("${musteri.ad} için tarih filtreli satış raporu.", fontSize = 13.sp, color = Color(0xFF8E8E93))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { baslangicSeciciAcik = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val basMetni = baslangicTarihState.selectedDateMillis?.let { formatTarih(it.toString()).substringBefore(" ") } ?: "Başlangıç Seç"
+                        Text(basMetni, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+
+                    Button(
+                        onClick = { bitisSeciciAcik = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val bitMetni = bitisTarihState.selectedDateMillis?.let { formatTarih(it.toString()).substringBefore(" ") } ?: "Bitiş Seç"
+                        Text(bitMetni, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = Color(0xFFF2F2F7), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Dönem Toplam Satış:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text("₺${formatMusteriCariIkiBasamak(toplamRaporTutari)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34C759))
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (gruplanmisSatislar.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Seçilen aralıkta satış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        gruplanmisSatislar.forEach { (tarihBasligi, satislarListesi) ->
+                            item {
+                                Text(
+                                    text = tarihBasligi,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF007AFF),
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                                )
+                            }
+                            items(satislarListesi) { satis ->
+                                val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList()
+                                val satisSaati = formatSaat(satis.tarih)
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF2F2F7), RoundedCornerShape(8.dp))
+                                        .padding(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Satış",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF8E8E93)
+                                        )
+                                        Text(
+                                            text = satisSaati,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF007AFF)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    HorizontalDivider(color = Color(0xFFE5E5EA), thickness = 0.5.dp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    kalemler.forEach { kalem ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${kalem.urunAdi} (${kalem.adet} ${kalem.birim} × ₺${formatMusteriCariIkiBasamak(kalem.birimFiyat)})",
+                                                fontSize = 13.sp,
+                                                color = Color.Black,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "₺${formatMusteriCariIkiBasamak(kalem.toplam)}",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF3C3C43)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Kapat", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
+        }
+    )
+
+    if (baslangicSeciciAcik) {
+        DatePickerDialog(
+            onDismissRequest = { baslangicSeciciAcik = false },
+            confirmButton = {
+                TextButton(onClick = { baslangicSeciciAcik = false }) { Text("Seç") }
+            }
+        ) { DatePicker(state = baslangicTarihState) }
+    }
+
+    if (bitisSeciciAcik) {
+        DatePickerDialog(
+            onDismissRequest = { bitisSeciciAcik = false },
+            confirmButton = {
+                TextButton(onClick = { bitisSeciciAcik = false }) { Text("Seç") }
+            }
+        ) { DatePicker(state = bitisTarihState) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GenelMusteriSatisDialog(
+    database: AppDatabase,
+    onDismiss: () -> Unit
+) {
+    var baslangicSeciciAcik by remember { mutableStateOf(false) }
+    var bitisSeciciAcik by remember { mutableStateOf(false) }
+
+    val baslangicTarihState = rememberDatePickerState()
+    val bitisTarihState = rememberDatePickerState()
+
+    val tumSatislar = remember {
+        database.appDatabaseQueries.selectSatisByMusteriIdNull().executeAsList()
+    }
+
+    val filtrelenmisSatislar = remember(tumSatislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
+        tumSatislar.filter { satis ->
+            val satisZamani = satis.tarih.toLongOrNull() ?: 0L
+            val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { satisZamani >= it } ?: true
+            val bitisKosulu = bitisTarihState.selectedDateMillis?.let { satisZamani <= (it + 86400000L) } ?: true
+            baslangicKosulu && bitisKosulu
+        }
+    }
+
+    val gruplanmisSatislar = remember(filtrelenmisSatislar) {
+        filtrelenmisSatislar.groupBy { satis -> formatTarih(satis.tarih).substringBefore(" ") }
+    }
+
+    val toplamRaporTutari = remember(filtrelenmisSatislar) {
+        filtrelenmisSatislar.sumOf { satis ->
+            database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList().sumOf { it.toplam }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("Genel Müşteri Satışları", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                Text("Müşteri seçilmeden yapılan satışların tarih filtreli dökümü.", fontSize = 13.sp, color = Color(0xFF8E8E93))
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -765,7 +985,7 @@ fun MusteriEkleDialog(
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcu (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası güncellendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -855,7 +1075,7 @@ fun BakiyeDuzenleDialog(
                     onValueChange = { yeniBakiyeText = it },
                     label = { Text("Yeni Net Borç Tutarı (₺)") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Burası eklendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(

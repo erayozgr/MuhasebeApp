@@ -161,6 +161,9 @@ SET ad = :ad,
     adres = :adres
 WHERE id = :id;
 
+selectSatisByMusteriIdNull:
+SELECT * FROM Satis WHERE musteriId IS NULL ORDER BY id DESC;
+
 -- --- Tedarikçi Sorguları ---
 selectAllTedarikci:
 SELECT * FROM Tedarikci ORDER BY ad ASC;
@@ -177,6 +180,9 @@ UPDATE Tedarikci SET bakiye = ? WHERE id = ?;
 
 selectAlisByTedarikciId:
 SELECT * FROM Alis WHERE tedarikciId = :tedarikciId ORDER BY id DESC;
+
+selectAlisByTedarikciIdNull:
+SELECT * FROM Alis WHERE tedarikciId IS NULL ORDER BY id DESC;
 
 updateTedarikci:
 UPDATE Tedarikci

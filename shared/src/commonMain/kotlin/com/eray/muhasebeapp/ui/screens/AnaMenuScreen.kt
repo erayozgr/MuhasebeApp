@@ -62,7 +62,11 @@ fun AnaMenuScreen(
     onYedekYukleIstegi: () -> Unit, // 🎯 UI dışından (FilePicker tetiklemek için) lambda fonksiyonu
     guncelTarih: String
 ) {
-    val urunler = remember { database.appDatabaseQueries.selectAllUrun().executeAsList() }
+    val urunler = remember(database) {
+        database.appDatabaseQueries
+            .selectAllUrun()
+            .executeAsList()
+    }
     val dosyaPaylasici = rememberDosyaPaylasici()
 
     val tumKritikUrunler = urunler.filter { it.stokAdedi <= 5L }
