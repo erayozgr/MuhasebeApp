@@ -1,14 +1,12 @@
 package com.eray.muhasebeapp
 
+import com.eray.muhasebeapp.database.IosDatabasePath
 import com.eray.muhasebeapp.database.shared.AppDatabase
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSURL
-import platform.Foundation.NSUserDomainMask
 import platform.posix.FILE
 import platform.posix.SEEK_END
 import platform.posix.SEEK_SET
@@ -23,65 +21,8 @@ import platform.posix.fwrite
 @OptIn(ExperimentalForeignApi::class)
 actual class PlatformDatabaseManager {
 
-    private val dbName = "muhasebe.db"
-
-    private fun getDatabasePath(): String? {
-
-        val fileManager =
-            NSFileManager.defaultManager
-
-        val appSupportDir =
-            fileManager.URLsForDirectory(
-                directory = NSApplicationSupportDirectory,
-                inDomains = NSUserDomainMask
-            ).firstOrNull() as? NSURL
-                ?: return null
-
-        val databasesDir =
-            appSupportDir.URLByAppendingPathComponent(
-                "databases"
-            ) ?: return null
-
-        val databasesPath =
-            databasesDir.path
-                ?: return null
-
-        if (
-            !fileManager.fileExistsAtPath(
-                databasesPath
-            )
-        ) {
-
-            val olusturuldu =
-                fileManager.createDirectoryAtPath(
-                    databasesPath,
-                    true,
-                    null,
-                    null
-                )
-
-            if (!olusturuldu) {
-
-                println(
-                    "iOS: databases klasörü oluşturulamadı."
-                )
-
-                return null
-            }
-        }
-
-        val dbPath =
-            databasesDir
-                .URLByAppendingPathComponent(
-                    dbName
-                )
-                ?.path
-
-        println(
-            "iOS: Gerçek DB yolu = $dbPath"
-        )
-
-        return dbPath
+    private fun getDatabasePath(): String {
+        return IosDatabasePath.getDatabasePath()
     }
 
     actual fun getDatabaseBytes(
@@ -97,7 +38,10 @@ actual class PlatformDatabaseManager {
 
             val dbPath =
                 getDatabasePath()
-                    ?: return null
+
+            println(
+                "iOS YEDEK: Okunacak DB = $dbPath"
+            )
 
             if (
                 !fileManager.fileExistsAtPath(
@@ -106,7 +50,7 @@ actual class PlatformDatabaseManager {
             ) {
 
                 println(
-                    "iOS: DB dosyası bulunamadı: $dbPath"
+                    "iOS YEDEK HATA: DB bulunamadı."
                 )
 
                 return null
@@ -116,14 +60,16 @@ actual class PlatformDatabaseManager {
                 fopen(
                     dbPath,
                     "rb"
-                ) ?: run {
+                )
 
-                    println(
-                        "iOS: DB fopen ile açılamadı."
-                    )
+            if (file == null) {
 
-                    return null
-                }
+                println(
+                    "iOS YEDEK HATA: fopen başarısız."
+                )
+
+                return null
+            }
 
             fseek(
                 file,
@@ -137,7 +83,7 @@ actual class PlatformDatabaseManager {
             if (fileSize <= 0) {
 
                 println(
-                    "iOS: DB dosyası boş."
+                    "iOS YEDEK HATA: DB boş."
                 )
 
                 return null
@@ -178,8 +124,8 @@ actual class PlatformDatabaseManager {
             }
 
             println(
-                "iOS: DB yedeği başarıyla hazırlandı. " +
-                        "Boyut=${bytes.size} byte"
+                "iOS YEDEK: DB okundu. " +
+                        "Boyut=${bytes.size}"
             )
 
             bytes
@@ -187,7 +133,7 @@ actual class PlatformDatabaseManager {
         } catch (e: Throwable) {
 
             println(
-                "iOS: DB okuma hatası = ${e.message}"
+                "iOS YEDEK HATA: ${e.message}"
             )
 
             null
@@ -209,20 +155,32 @@ actual class PlatformDatabaseManager {
         if (bytes.isEmpty()) {
 
             println(
-                "iOS: Restore başarısız. Gelen ByteArray boş."
+                "iOS RESTORE HATA: Gelen dosya boş."
             )
 
             return false
         }
 
-        var file: CPointer<FILE>? = null
+        /*
+         * Normal SQLite DB'nin ilk 16 byte'ı:
+         *
+         * SQLite format 3\0
+         */
+        if (!sqliteDosyasiMi(bytes)) {
+
+            println(
+                "iOS RESTORE HATA: Seçilen dosya " +
+                        "geçerli SQLite veritabanı değil."
+            )
+
+            return false
+        }
 
         val fileManager =
             NSFileManager.defaultManager
 
         val dbPath =
             getDatabasePath()
-                ?: return false
 
         val tempPath =
             "$dbPath.restore_temp"
@@ -236,53 +194,41 @@ actual class PlatformDatabaseManager {
         val journalPath =
             "$dbPath-journal"
 
+        var file: CPointer<FILE>? = null
+
         try {
 
             println(
-                "=============================="
+                "================================"
             )
 
             println(
-                "iOS: DB RESTORE BAŞLADI"
+                "iOS RESTORE BAŞLADI"
             )
 
             println(
-                "iOS: DB yolu = $dbPath"
+                "Hedef = $dbPath"
             )
 
             println(
-                "iOS: Yedek boyutu = ${bytes.size}"
+                "Yedek boyutu = ${bytes.size}"
             )
 
             println(
-                "=============================="
+                "================================"
             )
 
-            // Önce eski geçici dosyayı temizle
-            silDosyaVarsa(
+            /*
+             * Önce eski temp'i temizle.
+             */
+            silVarsa(
                 fileManager,
                 tempPath
             )
 
             /*
-             * WAL/SHM/JOURNAL dosyalarını temizliyoruz.
+             * Yedeği temp dosyasına yaz.
              */
-            silDosyaVarsa(
-                fileManager,
-                walPath
-            )
-
-            silDosyaVarsa(
-                fileManager,
-                shmPath
-            )
-
-            silDosyaVarsa(
-                fileManager,
-                journalPath
-            )
-
-            // Önce yedeği geçici dosyaya yaz.
             file =
                 fopen(
                     tempPath,
@@ -292,7 +238,8 @@ actual class PlatformDatabaseManager {
             if (file == null) {
 
                 println(
-                    "iOS: Restore temp dosyası açılamadı."
+                    "iOS RESTORE HATA: " +
+                            "Temp dosyası açılamadı."
                 )
 
                 return false
@@ -321,12 +268,12 @@ actual class PlatformDatabaseManager {
             ) {
 
                 println(
-                    "iOS: DB tamamen yazılamadı. " +
-                            "Beklenen=${bytes.size}, " +
+                    "iOS RESTORE HATA: Eksik yazıldı. " +
+                            "Beklenen=${bytes.size} " +
                             "Yazılan=$yazilan"
                 )
 
-                silDosyaVarsa(
+                silVarsa(
                     fileManager,
                     tempPath
                 )
@@ -335,7 +282,7 @@ actual class PlatformDatabaseManager {
             }
 
             /*
-             * Temp dosyasının gerçekten oluştuğunu kontrol et.
+             * Temp gerçekten oluştu mu?
              */
             if (
                 !fileManager.fileExistsAtPath(
@@ -344,24 +291,49 @@ actual class PlatformDatabaseManager {
             ) {
 
                 println(
-                    "iOS: Restore temp DB oluşmadı."
+                    "iOS RESTORE HATA: Temp DB yok."
                 )
 
                 return false
             }
 
             println(
-                "iOS: Yedek temp dosyaya yazıldı."
+                "iOS RESTORE: Yedek temp'e yazıldı."
             )
 
             /*
-             * Mevcut DB'yi kaldır.
+             * Driver MainViewController'da zaten
+             * kapatılmış olacak.
+             *
+             * Şimdi yan dosyaları temizleyebiliriz.
+             */
+            silVarsa(
+                fileManager,
+                walPath
+            )
+
+            silVarsa(
+                fileManager,
+                shmPath
+            )
+
+            silVarsa(
+                fileManager,
+                journalPath
+            )
+
+            /*
+             * Eski DB'yi sil.
              */
             if (
                 fileManager.fileExistsAtPath(
                     dbPath
                 )
             ) {
+
+                println(
+                    "iOS RESTORE: Eski DB siliniyor..."
+                )
 
                 val silindi =
                     fileManager.removeItemAtPath(
@@ -372,25 +344,25 @@ actual class PlatformDatabaseManager {
                 if (!silindi) {
 
                     println(
-                        "iOS: Eski DB silinemedi."
+                        "iOS RESTORE HATA: Eski DB silinemedi."
                     )
 
-                    silDosyaVarsa(
+                    silVarsa(
                         fileManager,
                         tempPath
                     )
 
                     return false
                 }
-
-                println(
-                    "iOS: Eski DB silindi."
-                )
             }
 
             /*
-             * Temp DB -> gerçek DB
+             * Temp -> gerçek muhasebe.db
              */
+            println(
+                "iOS RESTORE: Yeni DB yerine taşınıyor..."
+            )
+
             val tasindi =
                 fileManager.moveItemAtPath(
                     tempPath,
@@ -401,37 +373,31 @@ actual class PlatformDatabaseManager {
             if (!tasindi) {
 
                 println(
-                    "iOS: Yeni DB gerçek konumuna taşınamadı."
+                    "iOS RESTORE HATA: " +
+                            "DB yerine taşınamadı."
                 )
 
                 return false
             }
 
-            println(
-                "iOS: Yeni DB yerine taşındı."
-            )
-
             /*
-             * SQLite yan dosyalarını son kez temizle.
+             * Yan dosyaları son kez temizle.
              */
-            silDosyaVarsa(
+            silVarsa(
                 fileManager,
                 walPath
             )
 
-            silDosyaVarsa(
+            silVarsa(
                 fileManager,
                 shmPath
             )
 
-            silDosyaVarsa(
+            silVarsa(
                 fileManager,
                 journalPath
             )
 
-            /*
-             * Son kontrol.
-             */
             if (
                 !fileManager.fileExistsAtPath(
                     dbPath
@@ -439,26 +405,27 @@ actual class PlatformDatabaseManager {
             ) {
 
                 println(
-                    "iOS: Restore sonrası DB bulunamadı."
+                    "iOS RESTORE HATA: " +
+                            "İşlem sonrası DB bulunamadı."
                 )
 
                 return false
             }
 
             println(
-                "=============================="
+                "================================"
             )
 
             println(
-                "iOS: DB RESTORE BAŞARILI"
+                "iOS RESTORE BAŞARILI"
             )
 
             println(
-                "iOS: Boyut = ${bytes.size} byte"
+                "Yeni DB = $dbPath"
             )
 
             println(
-                "=============================="
+                "================================"
             )
 
             return true
@@ -466,8 +433,10 @@ actual class PlatformDatabaseManager {
         } catch (e: Throwable) {
 
             println(
-                "iOS: DB restore hatası = ${e.message}"
+                "iOS RESTORE EXCEPTION: ${e.message}"
             )
+
+            e.printStackTrace()
 
             return false
 
@@ -481,14 +450,59 @@ actual class PlatformDatabaseManager {
                 }
             }
 
-            silDosyaVarsa(
+            silVarsa(
                 fileManager,
                 tempPath
             )
         }
     }
 
-    private fun silDosyaVarsa(
+    private fun sqliteDosyasiMi(
+        bytes: ByteArray
+    ): Boolean {
+
+        if (bytes.size < 16) {
+            return false
+        }
+
+        val sqliteHeader =
+            byteArrayOf(
+                0x53,
+                0x51,
+                0x4C,
+                0x69,
+                0x74,
+                0x65,
+                0x20,
+                0x66,
+                0x6F,
+                0x72,
+                0x6D,
+                0x61,
+                0x74,
+                0x20,
+                0x33,
+                0x00
+            )
+
+        for (
+        index in
+        sqliteHeader.indices
+        ) {
+
+            if (
+                bytes[index] !=
+                sqliteHeader[index]
+            ) {
+
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private fun silVarsa(
         fileManager: NSFileManager,
         path: String
     ) {
@@ -501,22 +515,22 @@ actual class PlatformDatabaseManager {
                 )
             ) {
 
-                val sonuc =
+                val silindi =
                     fileManager.removeItemAtPath(
                         path,
                         null
                     )
 
                 println(
-                    "iOS: Yan dosya temizlendi: " +
-                            "$path -> $sonuc"
+                    "iOS: Dosya temizlendi: " +
+                            "$path -> $silindi"
                 )
             }
 
         } catch (e: Throwable) {
 
             println(
-                "iOS: Dosya silme hatası: " +
+                "iOS: Dosya temizleme hatası: " +
                         "$path -> ${e.message}"
             )
         }

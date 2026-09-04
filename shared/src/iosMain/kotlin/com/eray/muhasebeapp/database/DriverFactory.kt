@@ -8,11 +8,33 @@ class DriverFactory {
 
     fun createDriver(): SqlDriver {
 
-        println("iOS: Yeni SQLDelight driver oluşturuluyor.")
+        val databaseDirectory =
+            IosDatabasePath.getDatabaseDirectory()
 
-        return NativeSqliteDriver(
-            AppDatabase.Schema,
-            "muhasebe.db"
+        println(
+            "iOS: SQLDelight DB klasörü = $databaseDirectory"
         )
+
+        val driver =
+            NativeSqliteDriver(
+                schema = AppDatabase.Schema,
+                name = IosDatabasePath.DB_NAME,
+                onConfiguration = { config ->
+
+                    config.copy(
+                        extendedConfig =
+                            config.extendedConfig.copy(
+                                basePath =
+                                    databaseDirectory
+                            )
+                    )
+                }
+            )
+
+        println(
+            "iOS: NativeSqliteDriver oluşturuldu."
+        )
+
+        return driver
     }
 }
