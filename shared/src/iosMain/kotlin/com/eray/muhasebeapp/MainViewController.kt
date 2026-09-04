@@ -9,13 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
@@ -43,16 +41,13 @@ import platform.Foundation.timeIntervalSince1970
 fun MainViewController() =
     ComposeUIViewController {
 
-        /*
-         * DriverFactory
-         */
         val driverFactory =
             remember {
                 DriverFactory()
             }
 
         /*
-         * Aktif SQLDelight Driver
+         * Aktif SQLite driver.
          */
         var sqliteDriver by remember {
 
@@ -62,7 +57,7 @@ fun MainViewController() =
         }
 
         /*
-         * Aktif AppDatabase
+         * Aktif AppDatabase.
          */
         var database by remember {
 
@@ -74,12 +69,15 @@ fun MainViewController() =
         }
 
         /*
-         * Restore UI durumları
+         * Yedek geri yükleme ekranı.
          */
         var yedekYukleniyor by remember {
             mutableStateOf(false)
         }
 
+        /*
+         * Sonuç dialogu.
+         */
         var sonucMesaji by remember {
             mutableStateOf<String?>(null)
         }
@@ -92,7 +90,7 @@ fun MainViewController() =
             rememberCoroutineScope()
 
         /*
-         * Tarih
+         * Tarih.
          */
         val formatter =
             remember {
@@ -104,8 +102,7 @@ fun MainViewController() =
 
                     locale =
                         NSLocale(
-                            localeIdentifier =
-                                "tr_TR"
+                            localeIdentifier = "tr_TR"
                         )
                 }
             }
@@ -116,27 +113,37 @@ fun MainViewController() =
             )
 
         /*
-         * DB Manager
+         * Platform DB Manager.
          */
         val platformDbManager =
             remember {
-
                 PlatformDatabaseManager()
             }
 
         /*
-         * Dosya seçiciyi MUTLAKA remember ile tut.
+         * ÇOK ÖNEMLİ:
+         *
+         * Yedek alınırken WAL checkpoint yapabilmesi için
+         * manager'a mevcut aktif driver'ı veriyoruz.
+         *
+         * Restore sonrası sqliteDriver değiştiğinde
+         * Compose yeniden çalışır ve yeni driver buraya gelir.
+         */
+        platformDbManager.setDriver(
+            sqliteDriver
+        )
+
+        /*
+         * Dosya seçici mutlaka remember içinde tutulmalı.
          */
         val iosDosyaSecici =
             remember {
-
                 IosDosyaSecici()
             }
 
         val simdiMillis =
             (
-                    NSDate()
-                        .timeIntervalSince1970 *
+                    NSDate().timeIntervalSince1970 *
                             1000
                     ).toLong()
 
@@ -146,11 +153,7 @@ fun MainViewController() =
         ) {
 
             /*
-             * Restore sırasında App'i composition'dan
-             * çıkarıyoruz.
-             *
-             * Çünkü driver kapalıyken eski database
-             * üzerinden sorgu yapılmasını istemiyoruz.
+             * Restore yapılmıyorsa normal uygulama.
              */
             if (!yedekYukleniyor) {
 
@@ -191,11 +194,11 @@ fun MainViewController() =
 
                                 println(
                                     "iOS: Yedek seçildi. " +
-                                            "Boyut=${bytes.size}"
+                                            "Boyut=${bytes.size} byte"
                                 )
 
                                 /*
-                                 * Yükleme ekranını hemen aç.
+                                 * Progress ekranını aç.
                                  */
                                 yedekYukleniyor =
                                     true
@@ -208,15 +211,20 @@ fun MainViewController() =
                                     try {
 
                                         println(
-                                            "iOS: Restore işlemi başlıyor."
+                                            "================================"
+                                        )
+
+                                        println(
+                                            "iOS: YEDEK GERİ YÜKLEME BAŞLADI"
+                                        )
+
+                                        println(
+                                            "================================"
                                         )
 
                                         /*
-                                         * Dosya IO işlemini ana thread
-                                         * dışında gerçekleştiriyoruz.
-                                         *
-                                         * Böylece progress bar gerçekten
-                                         * ekranda hareket eder.
+                                         * DB dosyası üzerinde işlem yapacağımız
+                                         * için IO işlemlerini arka tarafta yap.
                                          */
                                         val basarili =
                                             withContext(
@@ -224,7 +232,7 @@ fun MainViewController() =
                                             ) {
 
                                                 /*
-                                                 * 1. Eski driver'ı kapat.
+                                                 * Eski SQLite bağlantısını kapat.
                                                  */
                                                 println(
                                                     "iOS: Eski driver kapatılıyor."
@@ -237,7 +245,8 @@ fun MainViewController() =
                                                 )
 
                                                 /*
-                                                 * 2. DB dosyasını değiştir.
+                                                 * Yedeği gerçek DB'nin
+                                                 * yerine koy.
                                                  */
                                                 platformDbManager
                                                     .restoreDatabaseBytes(
@@ -245,85 +254,42 @@ fun MainViewController() =
                                                     )
                                             }
 
-                                        if (!basarili) {
-
-                                            println(
-                                                "iOS: RestoreDatabaseBytes false döndü."
-                                            )
-
-                                            /*
-                                             * Restore başarısız olsa bile
-                                             * driver kapatıldığı için
-                                             * tekrar açıyoruz.
-                                             */
-                                            val yeniDriver =
-                                                driverFactory
-                                                    .createDriver()
-
-                                            sqliteDriver =
-                                                yeniDriver
-
-                                            database =
-                                                AppDatabase(
-                                                    yeniDriver
-                                                )
-
-                                            sonucBasarili =
-                                                false
-
-                                            sonucMesaji =
-                                                "Yedek geri yüklenemedi.\n\n" +
-                                                        "Dosya geçersiz olabilir veya " +
-                                                        "veritabanı değiştirilemedi."
-
-                                            return@launch
-                                        }
-
                                         /*
-                                         * 3. Restore başarılı.
-                                         *
-                                         * YENİ NativeSqliteDriver oluştur.
+                                         * Eski driver artık kapalı.
+                                         * Her durumda YENİ driver aç.
                                          */
                                         println(
-                                            "iOS: Yeni driver açılıyor."
+                                            "iOS: Yeni SQLite driver açılıyor."
                                         )
 
                                         val yeniDriver =
                                             driverFactory
                                                 .createDriver()
 
-                                        /*
-                                         * 4. Restore edilen DB'yi
-                                         * gerçekten açmayı dene.
-                                         */
                                         val yeniDatabase =
                                             AppDatabase(
                                                 yeniDriver
                                             )
 
                                         /*
-                                         * Basit test sorgusu.
-                                         *
-                                         * Bu çalışıyorsa yeni DB SQLDelight
-                                         * tarafından gerçekten açılmış demektir.
+                                         * Yeni DB'yi gerçekten okuyabiliyor
+                                         * muyuz kontrol et.
                                          */
-                                        val urunSayisi =
+                                        val musteriSayisi =
                                             yeniDatabase
                                                 .appDatabaseQueries
-                                                .selectAllUrun()
+                                                .selectAllMusteri()
                                                 .executeAsList()
                                                 .size
 
                                         println(
-                                            "iOS: Restore edilmiş DB açıldı."
-                                        )
-
-                                        println(
-                                            "iOS: Ürün sayısı = $urunSayisi"
+                                            "iOS: Restore sonrası müşteri sayısı = " +
+                                                    musteriSayisi
                                         )
 
                                         /*
-                                         * 5. Aktif state'leri değiştir.
+                                         * Yeni driver ve database'i
+                                         * uygulamaya geçir.
                                          */
                                         sqliteDriver =
                                             yeniDriver
@@ -331,35 +297,58 @@ fun MainViewController() =
                                         database =
                                             yeniDatabase
 
-                                        sonucBasarili =
-                                            true
+                                        /*
+                                         * Manager'a da yeni driver'ı ver.
+                                         */
+                                        platformDbManager
+                                            .setDriver(
+                                                yeniDriver
+                                            )
 
-                                        sonucMesaji =
-                                            "Yedek başarıyla geri yüklendi.\n\n" +
-                                                    "Veritabanı yeniden açıldı."
+                                        if (basarili) {
 
-                                        println(
-                                            "================================"
-                                        )
+                                            sonucBasarili =
+                                                true
 
-                                        println(
-                                            "iOS: YEDEK YÜKLEME TAMAMLANDI"
-                                        )
+                                            sonucMesaji =
+                                                "Yedek başarıyla geri yüklendi.\n\n" +
+                                                        "Müşteri sayısı: $musteriSayisi"
 
-                                        println(
-                                            "Ürün sayısı = $urunSayisi"
-                                        )
+                                            println(
+                                                "================================"
+                                            )
 
-                                        println(
-                                            "================================"
-                                        )
+                                            println(
+                                                "iOS: YEDEK GERİ YÜKLEME BAŞARILI"
+                                            )
+
+                                            println(
+                                                "Müşteri sayısı = $musteriSayisi"
+                                            )
+
+                                            println(
+                                                "================================"
+                                            )
+
+                                        } else {
+
+                                            sonucBasarili =
+                                                false
+
+                                            sonucMesaji =
+                                                "Yedek geri yüklenemedi."
+
+                                            println(
+                                                "iOS: Restore false döndü."
+                                            )
+                                        }
 
                                     } catch (
                                         e: Throwable
                                     ) {
 
                                         println(
-                                            "iOS RESTORE HATA: " +
+                                            "iOS: Yedek yükleme hatası: " +
                                                     "${e.message}"
                                         )
 
@@ -376,8 +365,8 @@ fun MainViewController() =
                                                             )
 
                                         /*
-                                         * Uygulamanın DB'siz
-                                         * kalmaması için tekrar aç.
+                                         * Driver kapatılmışsa uygulamanın
+                                         * DB'siz kalmaması için tekrar aç.
                                          */
                                         try {
 
@@ -393,14 +382,26 @@ fun MainViewController() =
                                                     yeniDriver
                                                 )
 
+                                            platformDbManager
+                                                .setDriver(
+                                                    yeniDriver
+                                                )
+
+                                            println(
+                                                "iOS: DB bağlantısı yeniden açıldı."
+                                            )
+
                                         } catch (
-                                            driverError: Throwable
+                                            driverException: Throwable
                                         ) {
 
                                             println(
-                                                "iOS: DB tekrar açılamadı: " +
-                                                        "${driverError.message}"
+                                                "iOS: Driver tekrar açılamadı: " +
+                                                        "${driverException.message}"
                                             )
+
+                                            driverException
+                                                .printStackTrace()
                                         }
 
                                     } finally {
@@ -419,11 +420,10 @@ fun MainViewController() =
             } else {
 
                 /*
-                 * ==========================
+                 * =====================================
                  * YEDEK YÜKLENİYOR EKRANI
-                 * ==========================
+                 * =====================================
                  */
-
                 Box(
                     modifier =
                         Modifier
@@ -535,9 +535,9 @@ fun MainViewController() =
             }
 
             /*
-             * ==========================
-             * SONUÇ DIALOG
-             * ==========================
+             * =====================================
+             * SONUÇ DIALOGU
+             * =====================================
              */
             sonucMesaji?.let { mesaj ->
 
