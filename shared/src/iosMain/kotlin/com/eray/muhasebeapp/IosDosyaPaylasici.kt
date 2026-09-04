@@ -17,56 +17,166 @@ import platform.UIKit.popoverPresentationController
 
 class IosDosyaPaylasici : DosyaPaylasici {
 
-    override fun paylas(dosyaAdi: String, icerik: String) {
-        paylasBytes(dosyaAdi, icerik.encodeToByteArray())
+    override fun paylas(
+        dosyaAdi: String,
+        icerik: String
+    ) {
+        paylasBytes(
+            dosyaAdi,
+            icerik.encodeToByteArray()
+        )
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override fun paylasBytes(dosyaAdi: String, icerik: ByteArray) {
-        val tempDir = NSTemporaryDirectory().removeSuffix("/")
-        val dosyaYolu = "$tempDir/$dosyaAdi"
+    override fun paylasBytes(
+        dosyaAdi: String,
+        icerik: ByteArray
+    ) {
 
-        val nsData = if (icerik.isNotEmpty()) {
-            icerik.usePinned { pinned ->
-                NSData.dataWithBytes(pinned.addressOf(0), icerik.size.toULong())
+        /*
+         * iOS'ta .db olarak değil .txt olarak kaydet.
+         *
+         * Örnek:
+         * muhasebe_yedek.db
+         *          ↓
+         * muhasebe_yedek.txt
+         */
+        val iosDosyaAdi =
+            when {
+                dosyaAdi.endsWith(
+                    ".db",
+                    ignoreCase = true
+                ) -> {
+                    dosyaAdi.dropLast(3) + ".txt"
+                }
+
+                dosyaAdi.endsWith(
+                    ".txt",
+                    ignoreCase = true
+                ) -> {
+                    dosyaAdi
+                }
+
+                else -> {
+                    "$dosyaAdi.txt"
+                }
             }
-        } else {
-            NSData()
-        }
 
-        val basarili = nsData.writeToFile(dosyaYolu, atomically = true)
+        println(
+            "iOS: Yedek dosya adı = $iosDosyaAdi"
+        )
+
+        println(
+            "iOS: Yedek boyutu = ${icerik.size} byte"
+        )
+
+        val tempDir =
+            NSTemporaryDirectory()
+                .removeSuffix("/")
+
+        val dosyaYolu =
+            "$tempDir/$iosDosyaAdi"
+
+        val nsData =
+            if (icerik.isNotEmpty()) {
+
+                icerik.usePinned { pinned ->
+
+                    NSData.dataWithBytes(
+                        pinned.addressOf(0),
+                        icerik.size.toULong()
+                    )
+                }
+
+            } else {
+
+                NSData()
+            }
+
+        val basarili =
+            nsData.writeToFile(
+                dosyaYolu,
+                atomically = true
+            )
+
         if (basarili) {
-            paylasDosya(dosyaYolu)
+
+            println(
+                "iOS: Yedek TXT olarak oluşturuldu: $dosyaYolu"
+            )
+
+            paylasDosya(
+                dosyaYolu
+            )
+
+        } else {
+
+            println(
+                "iOS: Yedek TXT dosyası oluşturulamadı."
+            )
         }
     }
 
-    private fun paylasDosya(dosyaYolu: String) {
-        val url = NSURL.fileURLWithPath(dosyaYolu)
-        val activityViewController = UIActivityViewController(
-            activityItems = listOf(url),
-            applicationActivities = null
-        )
+    private fun paylasDosya(
+        dosyaYolu: String
+    ) {
 
-        val window = UIApplication.sharedApplication.keyWindow
-            ?: (UIApplication.sharedApplication.windows.firstOrNull() as? UIWindow)
+        val url =
+            NSURL.fileURLWithPath(
+                dosyaYolu
+            )
 
-        var topController = window?.rootViewController
-        while (topController?.presentedViewController != null) {
-            topController = topController.presentedViewController
+        val activityViewController =
+            UIActivityViewController(
+                activityItems = listOf(url),
+                applicationActivities = null
+            )
+
+        val window =
+            UIApplication
+                .sharedApplication
+                .keyWindow
+                ?: (
+                        UIApplication
+                            .sharedApplication
+                            .windows
+                            .firstOrNull() as? UIWindow
+                        )
+
+        var topController =
+            window?.rootViewController
+
+        while (
+            topController
+                ?.presentedViewController != null
+        ) {
+
+            topController =
+                topController
+                    ?.presentedViewController
         }
 
-        // iPad üzerinde uygulamanın çökmesini engeller
-        activityViewController.popoverPresentationController?.sourceView = topController?.view
+        /*
+         * iPad crash engelleme
+         */
+        activityViewController
+            .popoverPresentationController
+            ?.sourceView =
+            topController?.view
 
-        topController?.presentViewController(
-            activityViewController,
-            animated = true,
-            completion = null
-        )
+        topController
+            ?.presentViewController(
+                activityViewController,
+                animated = true,
+                completion = null
+            )
     }
 }
 
 @Composable
 actual fun rememberDosyaPaylasici(): DosyaPaylasici {
-    return remember { IosDosyaPaylasici() }
+
+    return remember {
+        IosDosyaPaylasici()
+    }
 }
