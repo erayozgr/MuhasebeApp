@@ -14,109 +14,274 @@ import platform.Foundation.timeIntervalSince1970
 
 fun MainViewController() = ComposeUIViewController {
 
+    /*
+     * DriverFactory uygulama boyunca aynı nesne olarak kalabilir.
+     * createDriver() her çağrıldığında YENİ driver üretir.
+     */
     val driverFactory = remember {
         DriverFactory()
     }
 
-    // Driver state olarak tutuluyor.
-    // Yedek geri yüklenince eski driver kapanacak ve yenisi oluşturulacak.
+    /*
+     * İlk SQLite driver.
+     */
     var sqliteDriver by remember {
-        mutableStateOf(driverFactory.createDriver())
+        mutableStateOf(
+            driverFactory.createDriver()
+        )
     }
 
-    // Database de state.
-    // Yeni DB oluşturulunca Compose yeniden çizilecek.
+    /*
+     * AppDatabase aktif driver üzerinden oluşturuluyor.
+     *
+     * Restore sonrasında bu state değişeceği için
+     * Compose yeni database nesnesini kullanacak.
+     */
     var database by remember {
-        mutableStateOf(AppDatabase(sqliteDriver))
+        mutableStateOf(
+            AppDatabase(sqliteDriver)
+        )
     }
 
+    /*
+     * Tarih
+     */
     val formatter = remember {
+
         NSDateFormatter().apply {
+
             dateFormat = "d MMMM, EEEE"
-            locale = NSLocale(localeIdentifier = "tr_TR")
+
+            locale = NSLocale(
+                localeIdentifier = "tr_TR"
+            )
         }
     }
 
-    val iosTarih = formatter.stringFromDate(NSDate())
+    val iosTarih =
+        formatter.stringFromDate(
+            NSDate()
+        )
 
+    /*
+     * Platform DB yöneticisi
+     */
     val platformDbManager = remember {
         PlatformDatabaseManager()
     }
 
+    /*
+     * ÇOK ÖNEMLİ:
+     *
+     * IosDosyaSecici remember içinde tutuluyor.
+     * Böylece UIDocumentPicker delegate nesnesi
+     * dosya seçilirken yok olmaz.
+     */
     val iosDosyaSecici = remember {
         IosDosyaSecici()
     }
 
     val simdiMillis =
-        (NSDate().timeIntervalSince1970 * 1000).toLong()
+        (
+                NSDate().timeIntervalSince1970 *
+                        1000
+                ).toLong()
 
     App(
         database = database,
+
         platformDbManager = platformDbManager,
+
         guncelTarih = iosTarih,
+
         simdiMillis = simdiMillis,
 
         onYedekYukleIstegi = {
 
+            println(
+                "iOS: Yedek yükleme isteği başladı."
+            )
+
             iosDosyaSecici.dosyaSec { bytes ->
 
-                if (bytes == null || bytes.isEmpty()) {
-                    println("Yedek seçilmedi veya dosya boş.")
+                /*
+                 * Dosya seçilemediyse işlem yok.
+                 */
+                if (
+                    bytes == null ||
+                    bytes.isEmpty()
+                ) {
+
+                    println(
+                        "iOS: Yedek seçilmedi veya dosya boş."
+                    )
+
                     return@dosyaSec
                 }
 
+                println(
+                    "iOS: Seçilen yedek boyutu = " +
+                            "${bytes.size} byte"
+                )
+
                 try {
 
-                    println("Yedek geri yükleme başlatılıyor...")
-
-                    /*
-                     * ÇOK ÖNEMLİ:
-                     * DB dosyasını değiştirmeden önce açık SQLite
-                     * bağlantısını mutlaka kapatıyoruz.
-                     */
-                    sqliteDriver.close()
-
-                    val basarili =
-                        platformDbManager.restoreDatabaseBytes(bytes)
-
-                    /*
-                     * Restore başarılı olsa da olmasa da yeni driver
-                     * oluşturuyoruz. Çünkü eski driver kapatıldı.
-                     */
-                    sqliteDriver =
-                        driverFactory.createDriver()
-
-                    database =
-                        AppDatabase(sqliteDriver)
-
-                    if (basarili) {
-                        println("Yedek başarıyla geri yüklendi.")
-                    } else {
-                        println("Yedek geri yüklenirken hata oluştu.")
-                    }
-
-                } catch (e: Exception) {
+                    println(
+                        "=============================="
+                    )
 
                     println(
-                        "Yedek yükleme hatası: ${e.message}"
+                        "iOS: YEDEK GERİ YÜKLEME BAŞLADI"
+                    )
+
+                    println(
+                        "=============================="
                     )
 
                     /*
-                     * Hata durumunda uygulamanın DB'siz kalmaması
-                     * için driver'ı tekrar açıyoruz.
+                     * 1.
+                     *
+                     * ÇOK ÖNEMLİ:
+                     * DB dosyasına dokunmadan önce
+                     * açık SQLDelight/SQLite bağlantısını kapat.
+                     */
+                    println(
+                        "iOS: Eski SQLite driver kapatılıyor..."
+                    )
+
+                    sqliteDriver.close()
+
+                    println(
+                        "iOS: Eski SQLite driver kapatıldı."
+                    )
+
+                    /*
+                     * 2.
+                     *
+                     * Seçilen ByteArray'i mevcut muhasebe.db
+                     * dosyasının yerine koyuyoruz.
+                     */
+                    println(
+                        "iOS: DB dosyası geri yükleniyor..."
+                    )
+
+                    val basarili =
+                        platformDbManager
+                            .restoreDatabaseBytes(
+                                bytes
+                            )
+
+                    /*
+                     * 3.
+                     *
+                     * Eski driver kapalı.
+                     * Mutlaka YENİ bir NativeSqliteDriver açıyoruz.
+                     */
+                    println(
+                        "iOS: Yeni SQLite driver oluşturuluyor..."
+                    )
+
+                    val yeniDriver =
+                        driverFactory.createDriver()
+
+                    /*
+                     * State'i yeni driver'a geçiriyoruz.
+                     */
+                    sqliteDriver =
+                        yeniDriver
+
+                    /*
+                     * 4.
+                     *
+                     * AppDatabase'i yeni driver üzerinden
+                     * yeniden oluştur.
+                     */
+                    database =
+                        AppDatabase(
+                            yeniDriver
+                        )
+
+                    println(
+                        "iOS: AppDatabase yeniden oluşturuldu."
+                    )
+
+                    if (basarili) {
+
+                        println(
+                            "=============================="
+                        )
+
+                        println(
+                            "iOS: YEDEK BAŞARIYLA " +
+                                    "GERİ YÜKLENDİ"
+                        )
+
+                        println(
+                            "=============================="
+                        )
+
+                    } else {
+
+                        println(
+                            "=============================="
+                        )
+
+                        println(
+                            "iOS: YEDEK GERİ YÜKLEME " +
+                                    "BAŞARISIZ"
+                        )
+
+                        println(
+                            "=============================="
+                        )
+                    }
+
+                } catch (e: Throwable) {
+
+                    println(
+                        "iOS: Yedek yükleme hatası: " +
+                                "${e.message}"
+                    )
+
+                    e.printStackTrace()
+
+                    /*
+                     * Eski driver kapatılmış olabilir.
+                     *
+                     * Uygulamanın DB bağlantısız kalmaması
+                     * için yeni driver açmayı deniyoruz.
                      */
                     try {
-                        sqliteDriver =
+
+                        println(
+                            "iOS: DB bağlantısı tekrar açılıyor..."
+                        )
+
+                        val yeniDriver =
                             driverFactory.createDriver()
 
-                        database =
-                            AppDatabase(sqliteDriver)
+                        sqliteDriver =
+                            yeniDriver
 
-                    } catch (driverException: Exception) {
+                        database =
+                            AppDatabase(
+                                yeniDriver
+                            )
+
                         println(
-                            "Driver tekrar açılamadı: " +
+                            "iOS: DB bağlantısı tekrar açıldı."
+                        )
+
+                    } catch (
+                        driverException: Throwable
+                    ) {
+
+                        println(
+                            "iOS: Driver tekrar açılamadı: " +
                                     "${driverException.message}"
                         )
+
+                        driverException.printStackTrace()
                     }
                 }
             }

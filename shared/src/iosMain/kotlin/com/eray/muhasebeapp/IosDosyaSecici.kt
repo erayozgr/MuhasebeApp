@@ -1,5 +1,7 @@
 package com.eray.muhasebeapp
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -24,6 +26,8 @@ class IosDosyaSecici :
 
     fun dosyaSec(onSonuc: (ByteArray?) -> Unit) {
 
+        println("iOS: Dosya seçici açılıyor.")
+
         callback = onSonuc
 
         val picker = UIDocumentPickerViewController(
@@ -40,9 +44,7 @@ class IosDosyaSecici :
 
             println("iOS: Aktif ViewController bulunamadı.")
 
-            callback?.invoke(null)
-            callback = null
-
+            tamamla(null)
             return
         }
 
@@ -58,87 +60,80 @@ class IosDosyaSecici :
         didPickDocumentsAtURLs: List<*>
     ) {
 
-        val url =
-            didPickDocumentsAtURLs.firstOrNull() as? NSURL
+        println("iOS: documentPicker callback çalıştı.")
+
+        val url = didPickDocumentsAtURLs
+            .firstOrNull() as? NSURL
 
         if (url == null) {
 
-            println("iOS: Dosya URL'si alınamadı.")
+            println("iOS: Seçilen dosyanın URL'si alınamadı.")
 
-            callback?.invoke(null)
-            callback = null
-
+            tamamla(null)
             return
         }
 
+        println("iOS: Seçilen dosya yolu = ${url.path}")
+
+        val erisimBasladi =
+            url.startAccessingSecurityScopedResource()
+
         try {
 
-            val erisimBasladi =
-                url.startAccessingSecurityScopedResource()
+            val data: NSData? =
+                NSData.dataWithContentsOfURL(url)
 
-            try {
+            if (data == null) {
 
-                val data: NSData? =
-                    NSData.dataWithContentsOfURL(url)
+                println("iOS: Dosya NSData olarak okunamadı.")
 
-                if (data == null) {
-
-                    println("iOS: Dosya okunamadı.")
-
-                    callback?.invoke(null)
-
-                    return
-                }
-
-                val size =
-                    data.length.toInt()
-
-                if (size <= 0) {
-
-                    println("iOS: Seçilen dosya boş.")
-
-                    callback?.invoke(null)
-
-                    return
-                }
-
-                val bytes =
-                    ByteArray(size)
-
-                bytes.usePinned { pinned ->
-
-                    memcpy(
-                        pinned.addressOf(0),
-                        data.bytes,
-                        data.length
-                    )
-                }
-
-                println(
-                    "iOS: Yedek dosyası başarıyla okundu. " +
-                            "Boyut: $size byte"
-                )
-
-                callback?.invoke(bytes)
-
-            } finally {
-
-                if (erisimBasladi) {
-                    url.stopAccessingSecurityScopedResource()
-                }
+                tamamla(null)
+                return
             }
 
-        } catch (e: Exception) {
+            val size = data.length.toInt()
+
+            println("iOS: Seçilen dosya boyutu = $size byte")
+
+            if (size <= 0) {
+
+                println("iOS: Seçilen dosya boş.")
+
+                tamamla(null)
+                return
+            }
+
+            val bytes = ByteArray(size)
+
+            bytes.usePinned { pinned ->
+
+                memcpy(
+                    pinned.addressOf(0),
+                    data.bytes,
+                    data.length
+                )
+            }
 
             println(
-                "iOS dosya okuma hatası: ${e.message}"
+                "iOS: Dosya ByteArray olarak başarıyla okundu. " +
+                        "Boyut = ${bytes.size}"
             )
 
-            callback?.invoke(null)
+            tamamla(bytes)
+
+        } catch (e: Throwable) {
+
+            println(
+                "iOS: Dosya okuma hatası = ${e.message}"
+            )
+
+            tamamla(null)
 
         } finally {
 
-            callback = null
+            if (erisimBasladi) {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
     }
 
@@ -148,8 +143,16 @@ class IosDosyaSecici :
 
         println("iOS: Dosya seçimi iptal edildi.")
 
-        callback?.invoke(null)
+        tamamla(null)
+    }
+
+    private fun tamamla(bytes: ByteArray?) {
+
+        val mevcutCallback = callback
+
         callback = null
+
+        mevcutCallback?.invoke(bytes)
     }
 
     private fun aktifViewController(): UIViewController? {
@@ -159,11 +162,14 @@ class IosDosyaSecici :
 
         val windows =
             application.windows
-                .mapNotNull { it as? UIWindow }
+                .mapNotNull {
+                    it as? UIWindow
+                }
 
         val window =
-            windows.firstOrNull { it.isKeyWindow() }
-                ?: windows.firstOrNull()
+            windows.firstOrNull {
+                it.isKeyWindow()
+            } ?: windows.firstOrNull()
 
         var controller =
             window?.rootViewController
@@ -171,10 +177,19 @@ class IosDosyaSecici :
         while (
             controller?.presentedViewController != null
         ) {
+
             controller =
                 controller.presentedViewController
         }
 
         return controller
+    }
+}
+
+@Composable
+fun rememberIosDosyaSecici(): IosDosyaSecici {
+
+    return remember {
+        IosDosyaSecici()
     }
 }
