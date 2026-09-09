@@ -34,22 +34,24 @@ class IosDosyaPaylasici : DosyaPaylasici {
     ) {
 
         /*
-         * iOS'ta .db olarak değil .txt olarak kaydet.
+         * Dosya uzantısını türüne göre koru.
          *
-         * Örnek:
-         * muhasebe_yedek.db
-         *          ↓
-         * muhasebe_yedek.txt
+         * .xlsx -> .xlsx olarak kalır
+         * .txt  -> .txt olarak kalır
+         * .db   -> .txt yapılır (iOS yedek için)
          */
         val iosDosyaAdi =
             when {
+
+                // Excel raporu
                 dosyaAdi.endsWith(
-                    ".db",
+                    ".xlsx",
                     ignoreCase = true
                 ) -> {
-                    dosyaAdi.dropLast(3) + ".txt"
+                    dosyaAdi
                 }
 
+                // TXT dosyası
                 dosyaAdi.endsWith(
                     ".txt",
                     ignoreCase = true
@@ -57,17 +59,26 @@ class IosDosyaPaylasici : DosyaPaylasici {
                     dosyaAdi
                 }
 
+                // Veritabanı yedeği
+                dosyaAdi.endsWith(
+                    ".db",
+                    ignoreCase = true
+                ) -> {
+                    dosyaAdi.dropLast(3) + ".txt"
+                }
+
+                // Uzantısız dosya
                 else -> {
                     "$dosyaAdi.txt"
                 }
             }
 
         println(
-            "iOS: Yedek dosya adı = $iosDosyaAdi"
+            "iOS: Dosya adı = $iosDosyaAdi"
         )
 
         println(
-            "iOS: Yedek boyutu = ${icerik.size} byte"
+            "iOS: Dosya boyutu = ${icerik.size} byte"
         )
 
         val tempDir =
@@ -102,7 +113,7 @@ class IosDosyaPaylasici : DosyaPaylasici {
         if (basarili) {
 
             println(
-                "iOS: Yedek TXT olarak oluşturuldu: $dosyaYolu"
+                "iOS: Dosya oluşturuldu: $dosyaYolu"
             )
 
             paylasDosya(
@@ -112,7 +123,7 @@ class IosDosyaPaylasici : DosyaPaylasici {
         } else {
 
             println(
-                "iOS: Yedek TXT dosyası oluşturulamadı."
+                "iOS: Dosya oluşturulamadı."
             )
         }
     }
