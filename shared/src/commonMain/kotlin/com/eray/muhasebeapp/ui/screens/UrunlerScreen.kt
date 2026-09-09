@@ -8,14 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,39 +21,47 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.UrunEntity
-import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.data.model.Urun
+import com.eray.muhasebeapp.data.network.ApiService
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UrunlerScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
     var aramaMetni by remember { mutableStateOf("") }
     var urunEklemeDialogGoster by remember { mutableStateOf(false) }
-    var duzenlenecekUrun by remember { mutableStateOf<UrunEntity?>(null) }
-    var silinecekUrun by remember { mutableStateOf<UrunEntity?>(null) }
+    var duzenlenecekUrun by remember { mutableStateOf<Urun?>(null) }
+    var silinecekUrun by remember { mutableStateOf<Urun?>(null) }
 
     var refreshTrigger by remember { mutableStateOf(0) }
     var kritikStokFiltresiAcik by remember { mutableStateOf(false) }
-
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    val urunListesi by remember(aramaMetni, refreshTrigger, kritikStokFiltresiAcik) {
-        derivedStateOf {
+    val scope = rememberCoroutineScope()
+    var urunListesi by remember { mutableStateOf<List<Urun>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(aramaMetni, refreshTrigger, kritikStokFiltresiAcik) {
+        loading = true
+        try {
             val hamListe = if (aramaMetni.isEmpty()) {
-                database.appDatabaseQueries.selectAllUrun().executeAsList()
+                apiService.getUrunler()
             } else {
-                database.appDatabaseQueries.searchUrun(aramaMetni).executeAsList()
+                apiService.searchUrunler(aramaMetni)
             }
 
-            if (kritikStokFiltresiAcik) {
+            urunListesi = if (kritikStokFiltresiAcik) {
                 hamListe.filter { it.stokAdedi <= 5L }
             } else {
                 hamListe
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            loading = false
         }
     }
 
@@ -118,12 +121,13 @@ fun UrunlerScreen(
             }
         }
 
-        // --- Özet Kartları ---
-        val tumUrunler = remember(refreshTrigger) {
-            database.appDatabaseQueries.selectAllUrun().executeAsList()
+        if (loading && urunListesi.isEmpty()) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
-        val toplamStokDeger = tumUrunler.sumOf { it.alisFiyati * it.stokAdedi }
-        val kritikStokSayisi = tumUrunler.count { it.stokAdedi <= 5L }
+
+        // --- Özet Kartları ---
+        val toplamStokDeger = urunListesi.sumOf { it.alisFiyati * it.stokAdedi }
+        val kritikStokSayisi = urunListesi.count { it.stokAdedi <= 5L }
 
         Row(
             modifier = Modifier
@@ -133,7 +137,7 @@ fun UrunlerScreen(
         ) {
             UrunOzetKart(
                 baslik = "Toplam Ürün",
-                deger = "${tumUrunler.size}",
+                deger = "${urunListesi.size}",
                 renk = Color(0xFF007AFF),
                 modifier = Modifier.weight(1f)
             )
@@ -172,7 +176,7 @@ fun UrunlerScreen(
         )
 
         // --- Ürün Listesi ---
-        if (urunListesi.isEmpty()) {
+        if (urunListesi.isEmpty() && !loading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = when {
@@ -213,32 +217,44 @@ fun UrunlerScreen(
 
     // --- Yeni Ürün Ekleme Dialog ---
     if (urunEklemeDialogGoster) {
+        var isSaving by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        
         UrunFormDialog(
             baslik = "Yeni Ürün Ekle",
+            isSaving = isSaving,
+            errorMessage = errorMessage,
             onKaydet = { barkod, ad, alis, satis, stok, birim, kdv ->
-                database.appDatabaseQueries.insertUrun(
-                    barkod = barkod,
-                    ad = ad,
-                    alisFiyati = alis,
-                    satisFiyati = satis,
-                    stokAdedi = stok,
-                    birim = birim,
-                    kdvOrani = kdv
-                )
-                val yeniUrunId = database.appDatabaseQueries.lastInsertId().executeAsOne()
-                database.appDatabaseQueries.insertStokHareketi(
-                    urunId = yeniUrunId,
-                    urunAdi = ad,
-                    hareketTuru = "Giriş",
-                    miktar = stok,
-                    birimFiyat = alis,
-                    aciklama = "Yeni ürün eklendi",
-                    tarih = getEpochMillis().toString()
-                )
-                refreshTrigger++
-                urunEklemeDialogGoster = false
+                scope.launch {
+                    isSaving = true
+                    errorMessage = null
+                    try {
+                        val result = apiService.createUrun(
+                            Urun(
+                                barkod = barkod,
+                                ad = ad,
+                                alisFiyati = alis,
+                                satisFiyati = satis,
+                                stokAdedi = stok,
+                                birim = birim,
+                                kdvOrani = kdv.toInt()
+                            )
+                        )
+                        if (result.isSuccess) {
+                            refreshTrigger++
+                            urunEklemeDialogGoster = false
+                        } else {
+                            errorMessage = result.exceptionOrNull()?.message ?: "Bilinmeyen hata"
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "Bağlantı hatası: ${e.message}"
+                        e.printStackTrace()
+                    } finally {
+                        isSaving = false
+                    }
+                }
             },
-            onIptal = { urunEklemeDialogGoster = false }
+            onIptal = { if (!isSaving) urunEklemeDialogGoster = false }
         )
     }
 
@@ -254,17 +270,26 @@ fun UrunlerScreen(
             mevcutBirim = urun.birim,
             mevcutKdv = urun.kdvOrani.toString(),
             onKaydet = { barkod, ad, alis, satis, stok, birim, kdv ->
-                database.appDatabaseQueries.updateUrun(
-                    barkod = barkod,
-                    ad = ad,
-                    alisFiyati = alis,
-                    satisFiyati = satis,
-                    stokAdedi = stok,
-                    birim = birim,
-                    kdvOrani = kdv,
-                    id = urun.id
-                )
-                refreshTrigger++
+                scope.launch {
+                    try {
+                        apiService.updateUrun(
+                            urun.id ?: 0L,
+                            Urun(
+                                id = urun.id,
+                                barkod = barkod,
+                                ad = ad,
+                                alisFiyati = alis,
+                                satisFiyati = satis,
+                                stokAdedi = stok,
+                                birim = birim,
+                                kdvOrani = kdv.toInt()
+                            )
+                        )
+                        refreshTrigger++
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
                 duzenlenecekUrun = null
             },
             onIptal = { duzenlenecekUrun = null }
@@ -280,17 +305,14 @@ fun UrunlerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        database.appDatabaseQueries.deleteUrun(urun.id)
-                        database.appDatabaseQueries.insertStokHareketi(
-                            urunId = urun.id,
-                            urunAdi = urun.ad,
-                            hareketTuru = "Çıkış",
-                            miktar = urun.stokAdedi,
-                            birimFiyat = urun.alisFiyati,
-                            aciklama = "Ürün silindi",
-                            tarih = getEpochMillis().toString()
-                        )
-                        refreshTrigger++
+                        scope.launch {
+                            try {
+                                apiService.deleteUrun(urun.id ?: 0L)
+                                refreshTrigger++
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
                         silinecekUrun = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
@@ -311,6 +333,8 @@ fun UrunlerScreen(
 @Composable
 private fun UrunFormDialog(
     baslik: String,
+    isSaving: Boolean = false,
+    errorMessage: String? = null,
     mevcutBarkod: String = "",
     mevcutAd: String = "",
     mevcutAlis: String = "",
@@ -340,6 +364,10 @@ private fun UrunFormDialog(
         title = { Text(baslik, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Black) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                if (errorMessage != null) {
+                    Text(errorMessage, color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
                 OutlinedTextField(
                     value = ad,
                     onValueChange = { ad = it; adHata = false },
@@ -347,7 +375,8 @@ private fun UrunFormDialog(
                     isError = adHata,
                     supportingText = if (adHata) {{ Text("Ürün adı zorunludur") }} else null,
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !isSaving
                 )
                 OutlinedTextField(
                     value = barkod,
@@ -355,7 +384,8 @@ private fun UrunFormDialog(
                     label = { Text("Barkod No") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = !isSaving
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -364,7 +394,8 @@ private fun UrunFormDialog(
                         label = { Text("Alış Fiyatı (₺)") },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true
+                        singleLine = true,
+                        enabled = !isSaving
                     )
                     OutlinedTextField(
                         value = satis,
@@ -372,7 +403,8 @@ private fun UrunFormDialog(
                         label = { Text("Satış Fiyatı (₺)") },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true
+                        singleLine = true,
+                        enabled = !isSaving
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -382,7 +414,8 @@ private fun UrunFormDialog(
                         label = { Text("Stok Adedi") },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
+                        singleLine = true,
+                        enabled = !isSaving
                     )
 
                     Box(modifier = Modifier.weight(1f)) {
@@ -392,9 +425,10 @@ private fun UrunFormDialog(
                             label = { Text("KDV Oranı") },
                             trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
                             readOnly = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isSaving
                         )
-                        Box(modifier = Modifier.matchParentSize().clickable { kdvMenuAcik = true })
+                        if (!isSaving) Box(modifier = Modifier.matchParentSize().clickable { kdvMenuAcik = true })
 
                         DropdownMenu(
                             expanded = kdvMenuAcik,
@@ -417,9 +451,10 @@ private fun UrunFormDialog(
                         label = { Text("Birim") },
                         trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
                         readOnly = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isSaving
                     )
-                    Box(modifier = Modifier.matchParentSize().clickable { birimMenuAcik = true })
+                    if (!isSaving) Box(modifier = Modifier.matchParentSize().clickable { birimMenuAcik = true })
 
                     DropdownMenu(
                         expanded = birimMenuAcik,
@@ -433,10 +468,15 @@ private fun UrunFormDialog(
                         }
                     }
                 }
+
+                if (isSaving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
         },
         confirmButton = {
             Button(
+                enabled = !isSaving,
                 onClick = {
                     if (ad.isEmpty()) {
                         adHata = true
@@ -457,10 +497,10 @@ private fun UrunFormDialog(
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-            ) { Text("Kaydet", color = Color.White) }
+            ) { Text(if (isSaving) "Kaydediliyor..." else "Kaydet", color = Color.White) }
         },
         dismissButton = {
-            TextButton(onClick = onIptal) { Text("Vazgeç", color = Color(0xFFFF3B30)) }
+            TextButton(onClick = onIptal, enabled = !isSaving) { Text("Vazgeç", color = Color(0xFFFF3B30)) }
         },
         shape = RoundedCornerShape(16.dp),
         containerColor = Color.White
@@ -498,7 +538,7 @@ private fun UrunOzetKart(
 
 @Composable
 private fun UrunSatiri(
-    urun: UrunEntity,
+    urun: Urun,
     onDuzenle: () -> Unit,
     onSil: () -> Unit
 ) {

@@ -20,18 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.Musteri
-import com.eray.muhasebeapp.database.UrunEntity
-import com.eray.muhasebeapp.database.Satis
-import com.eray.muhasebeapp.database.SatisKalemi
-import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
 import com.eray.muhasebeapp.formatTarih
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 data class SepetKalemi(
-    val urun: UrunEntity,
+    val urun: Urun,
     val adet: Int,
     val satisFiyati: Double
 ) {
@@ -46,11 +41,12 @@ data class GecmisSatisKaydi(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SatisScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
-    val urunler = remember { database.appDatabaseQueries.selectAllUrun().executeAsList() }
-    val musteriler = remember { database.appDatabaseQueries.selectAllMusteri().executeAsList() }
+    var urunler by remember { mutableStateOf<List<Urun>>(emptyList()) }
+    var musteriler by remember { mutableStateOf<List<Musteri>>(emptyList()) }
+    val scope = rememberCoroutineScope()
 
     var sepet by remember { mutableStateOf(listOf<SepetKalemi>()) }
     var seciliMusteri by remember { mutableStateOf<Musteri?>(null) }
@@ -63,28 +59,31 @@ fun SatisScreen(
 
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    var gecmisTumSatislarHam by remember { mutableStateOf<List<Satis>?>(null) }
-    var gecmisLimit by remember { mutableStateOf(20) }
     var gecmisSatislar by remember { mutableStateOf(listOf<GecmisSatisKaydi>()) }
     var gecmisYukleniyor by remember { mutableStateOf(false) }
-    var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
+    var loadingInitialData by remember { mutableStateOf(true) }
 
-    LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
+    LaunchedEffect(Unit) {
+        loadingInitialData = true
+        try {
+            urunler = apiService.getUrunler()
+            musteriler = apiService.getMusteriler()
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingInitialData = false }
+    }
+
+    LaunchedEffect(sepet.isEmpty()) {
         if (sepet.isEmpty()) {
             gecmisYukleniyor = true
-            withContext(Dispatchers.Default) {
-                if (gecmisTumSatislarHam == null) {
-                    gecmisTumSatislarHam = database.appDatabaseQueries.selectAllSatis().executeAsList()
-                }
-                val ham = gecmisTumSatislarHam ?: emptyList()
-                val limitli = ham.take(gecmisLimit)
-                gecmisDahaFazlaVar = ham.size > gecmisLimit
-                gecmisSatislar = limitli.map { s ->
-                    val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(s.id).executeAsList()
+            try {
+                val list = apiService.getSatislar().take(20)
+                val mapped = list.map { s ->
+                    val kalemler = try { apiService.getSatisKalemler(s.id ?: 0L) } catch (e: Exception) { emptyList() }
                     GecmisSatisKaydi(s, kalemler)
                 }
-            }
-            gecmisYukleniyor = false
+                gecmisSatislar = mapped
+            } catch (e: Exception) { e.printStackTrace() }
+            finally { gecmisYukleniyor = false }
         }
     }
 
@@ -127,6 +126,9 @@ fun SatisScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (loadingInitialData) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -182,7 +184,7 @@ fun SatisScreen(
 
             if (sepet.isEmpty()) {
                 Text(
-                    text = "GEÇMİŞ SATIŞLAR",
+                    text = "SON SATIŞLAR",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF8E8E93),
@@ -208,26 +210,6 @@ fun SatisScreen(
                     ) {
                         items(gecmisSatislar) { kayit ->
                             GecmisSatisKart(kayit)
-                        }
-                        if (gecmisDahaFazlaVar) {
-                            item {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TextButton(
-                                        onClick = { gecmisLimit += 20 },
-                                        enabled = !gecmisYukleniyor,
-                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF007AFF))
-                                    ) {
-                                        Text(
-                                            if (gecmisYukleniyor) "Yükleniyor..." else "Daha Fazla Yükle (+20)",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                }
-                            }
                         }
                         item { Spacer(modifier = Modifier.height(88.dp)) }
                     }
@@ -278,16 +260,33 @@ fun SatisScreen(
                     Button(
                         onClick = {
                             if (sepet.isNotEmpty()) {
-                                satisiTamamla(
-                                    database = database,
-                                    sepet = sepet,
-                                    musteri = seciliMusteri
-                                )
-                                sepet = listOf()
-                                seciliMusteri = null
-                                basariliMesajGoster = true
-                                gecmisTumSatislarHam = null
-                                gecmisLimit = 20
+                                println("UI_DEBUG: Satışı Tamamla tıklandı. Sepet boyutu: ${sepet.size}, Müşteri: ${seciliMusteri?.ad ?: "Genel"}")
+                                scope.launch {
+                                    try {
+                                        val request = SatisKayitRequest(
+                                            musteriId = seciliMusteri?.id,
+                                            kalemler = sepet.map { SatisKalemiRequest(it.urun.id ?: 0L, it.adet.toLong(), it.satisFiyati) }
+                                        )
+                                        println("UI_DEBUG: API isteği gönderiliyor -> $request")
+
+                                        val result = apiService.createSatis(request)
+
+                                        if (result.isSuccess) {
+                                            println("UI_DEBUG: Satış başarılı. UI temizleniyor.")
+                                            sepet = listOf()
+                                            seciliMusteri = null
+                                            basariliMesajGoster = true
+                                        } else {
+                                            val error = result.exceptionOrNull()?.message
+                                            println("UI_DEBUG: Satış BAŞARISIZ! Hata: $error")
+                                        }
+                                    } catch (e: Exception) {
+                                        println("UI_DEBUG: Satış işlemi KRİTİK HATA: ${e.message}")
+                                        e.printStackTrace()
+                                    }
+                                }
+                            } else {
+                                println("UI_DEBUG: Satışı Tamamla tıklandı ama sepet boş!")
                             }
                         },
                         enabled = sepet.isNotEmpty(),
@@ -336,43 +335,6 @@ fun SatisScreen(
                 }
             }
         )
-    }
-}
-
-private fun satisiTamamla(
-    database: AppDatabase,
-    sepet: List<SepetKalemi>,
-    musteri: Musteri?
-) {
-    val toplamTutar = sepet.sumOf { it.toplam }
-    val queries = database.appDatabaseQueries
-
-    queries.transaction {
-        queries.insertSatis(
-            musteri?.id,
-            musteri?.ad ?: "Genel Müşteri",
-            tarih = getEpochMillis().toString(),
-            toplamTutar
-        )
-        val satisId = queries.lastInsertId().executeAsOne()
-
-        sepet.forEach { kalem ->
-            queries.insertSatisKalemi(
-                satisId,
-                kalem.urun.id,
-                kalem.urun.ad,
-                kalem.adet.toLong(),
-                kalem.urun.birim,
-                kalem.satisFiyati,
-                kalem.toplam
-            )
-            val yeniStok = kalem.urun.stokAdedi - kalem.adet
-            queries.updateUrunStok(yeniStok, kalem.urun.id)
-        }
-
-        if (musteri != null) {
-            queries.updateMusteriBakiye(musteri.bakiye + toplamTutar, musteri.id)
-        }
     }
 }
 
@@ -428,15 +390,22 @@ private fun GecmisSatisKart(kayit: GecmisSatisKaydi) {
                 Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF34C759))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(kayit.satis.musteriAdi, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                // DÜZELTME: Nullable musteriAdi kontrolü eklendi
+                Text(
+                    text = kayit.satis.musteriAdi ?: "Genel Müşteri",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black
+                )
                 if (urunListesi.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(urunListesi, fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 16.sp)
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
+                // DÜZELTME: Nullable toplamTutar kontrolü eklendi
                 Text(
-                    "₺${formatSatisFiyatiIkiBasamak(kayit.satis.toplamTutar)}",
+                    "₺${formatSatisFiyatiIkiBasamak(kayit.satis.toplamTutar ?: 0.0)}",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF34C759)
@@ -450,12 +419,12 @@ private fun GecmisSatisKart(kayit: GecmisSatisKaydi) {
 
 @Composable
 private fun UrunSecDialog(
-    urunler: List<UrunEntity>,
+    urunler: List<Urun>,
     sepet: List<SepetKalemi>,
     onDismiss: () -> Unit,
-    onEkle: (UrunEntity, Int, Double) -> Unit
+    onEkle: (Urun, Int, Double) -> Unit
 ) {
-    var seciliUrun by remember { mutableStateOf<UrunEntity?>(null) }
+    var seciliUrun by remember { mutableStateOf<Urun?>(null) }
     var adetText by remember { mutableStateOf("") }
     var fiyatText by remember { mutableStateOf("") }
     var dropdownAcikMi by remember { mutableStateOf(false) }
@@ -513,7 +482,7 @@ private fun UrunSecDialog(
                         Text(text = seciliUrun?.let { "Öneri: ₺${it.satisFiyati}" } ?: "0.0")
                     },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Güncellendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -523,7 +492,7 @@ private fun UrunSecDialog(
                     label = { Text("Adet") },
                     placeholder = { Text(text = "Öneri: 1") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // 🎯 Güncellendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -544,7 +513,8 @@ private fun UrunSecDialog(
                 val temizFiyatText = fiyatText.replace(',', '.')
                 val girilenFiyat = if (temizFiyatText.isBlank()) (urun?.satisFiyati ?: 0.0) else (temizFiyatText.toDoubleOrNull() ?: 0.0)
 
-                if (urun != null && adet > 0 && adet <= kalanStok && girilenFiyat > 0.0) {
+                // DÜZELTME: adet.toLong() <= kalanStok tür dönüşümü güvene alındı
+                if (urun != null && adet > 0 && adet.toLong() <= kalanStok && girilenFiyat > 0.0) {
                     onEkle(urun, adet, girilenFiyat)
                 }
             }) { Text("Sepete Ekle", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
@@ -555,9 +525,10 @@ private fun UrunSecDialog(
     )
 }
 
-private fun formatSatisFiyatiIkiBasamak(deger: Double): String {
-    val negatifMi = deger < 0
-    val mutlakDeger = if (negatifMi) -deger else deger
+private fun formatSatisFiyatiIkiBasamak(deger: Double?): String {
+    val d = deger ?: 0.0
+    val negatifMi = d < 0
+    val mutlakDeger = if (negatifMi) -d else d
     val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
     val tamKisim = yuvarlanmis.toLong()
     val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()

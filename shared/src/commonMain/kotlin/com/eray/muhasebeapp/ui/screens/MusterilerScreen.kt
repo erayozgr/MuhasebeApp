@@ -23,14 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.Musteri
-import com.eray.muhasebeapp.database.Satis
-import com.eray.muhasebeapp.database.SatisKalemi
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
 import com.eray.muhasebeapp.rememberUrlAcici
 import com.eray.muhasebeapp.telefonLinkOlustur
 import com.eray.muhasebeapp.whatsappLinkOlustur
 import com.eray.muhasebeapp.formatTarih
+import com.eray.muhasebeapp.parseTarihMillis
+import kotlinx.coroutines.launch
 
 private fun bakiyeMetniVeRengi(bakiye: Double): Pair<String, Color> {
     val formatliBakiye = formatMusteriCariIkiBasamak(bakiye)
@@ -44,12 +44,23 @@ private fun bakiyeMetniVeRengi(bakiye: Double): Pair<String, Color> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusterilerScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
     var yenilemeTetikleyici by remember { mutableStateOf(0) }
-    val musteriler = remember(yenilemeTetikleyici) {
-        database.appDatabaseQueries.selectAllMusteri().executeAsList()
+    var musteriler by remember { mutableStateOf<List<Musteri>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(yenilemeTetikleyici) {
+        loading = true
+        try {
+            musteriler = apiService.getMusteriler()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            loading = false
+        }
     }
 
     var dialogAcikMi by remember { mutableStateOf(false) }
@@ -101,6 +112,9 @@ fun MusterilerScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (loading && musteriler.isEmpty()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -159,7 +173,7 @@ fun MusterilerScreen(
                 }
             }
 
-            if (musteriler.isEmpty()) {
+            if (musteriler.isEmpty() && !loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Henüz müşteri eklenmedi", color = Color(0xFF8E8E93), fontSize = 15.sp)
                 }
@@ -182,19 +196,39 @@ fun MusterilerScreen(
     }
 
     if (dialogAcikMi) {
+        var isSaving by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+
         MusteriEkleDialog(
-            onDismiss = { dialogAcikMi = false },
+            isSaving = isSaving,
+            errorMessage = errorMessage,
+            onDismiss = { if (!isSaving) dialogAcikMi = false },
             onKaydet = { ad, telefon, adres, bakiye ->
-                database.appDatabaseQueries.insertMusteri(ad, telefon, adres, bakiye)
-                yenilemeTetikleyici++
-                dialogAcikMi = false
+                scope.launch {
+                    isSaving = true
+                    errorMessage = null
+                    try {
+                        val result = apiService.createMusteri(Musteri(ad = ad, telefon = telefon, adres = adres, bakiye = bakiye))
+                        if (result.isSuccess) {
+                            yenilemeTetikleyici++
+                            dialogAcikMi = false
+                        } else {
+                            errorMessage = result.exceptionOrNull()?.message ?: "Bilinmeyen sunucu hatası"
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "Bağlantı hatası: ${e.message}"
+                        e.printStackTrace()
+                    } finally {
+                        isSaving = false
+                    }
+                }
             }
         )
     }
 
     detayGosterilenMusteri?.let { musteri ->
         MusteriDetayDialog(
-            database = database,
+            apiService = apiService,
             musteri = musteri,
             onDismiss = { detayGosterilenMusteri = null },
             onDuzenle = {
@@ -221,8 +255,12 @@ fun MusterilerScreen(
             musteri = musteri,
             onDismiss = { duzenlenenMusteri = null },
             onKaydet = { ad, telefon, adres ->
-                database.appDatabaseQueries.updateMusteri(ad, telefon, adres, musteri.id)
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.updateMusteri(musteri.id ?: 0L, musteri.copy(ad = ad, telefon = telefon, adres = adres))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 duzenlenenMusteri = null
             }
         )
@@ -233,8 +271,12 @@ fun MusterilerScreen(
             musteri = musteri,
             onDismiss = { bakiyeDuzenlenenMusteri = null },
             onKaydet = { yeniBakiye ->
-                database.appDatabaseQueries.updateMusteriBakiye(yeniBakiye, musteri.id)
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.updateMusteri(musteri.id ?: 0L, musteri.copy(bakiye = yeniBakiye))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 bakiyeDuzenlenenMusteri = null
             }
         )
@@ -245,23 +287,20 @@ fun MusterilerScreen(
             musteri = musteri,
             onDismiss = { tahsilatMusteri = null },
             onKaydet = { tahsilatTutari ->
-                database.appDatabaseQueries.updateMusteriBakiye(musteri.bakiye - tahsilatTutari, musteri.id)
-
-                database.appDatabaseQueries.insertTahsilat(
-                    musteriId = musteri.id,
-                    musteriAdi = musteri.ad,
-                    tutar = tahsilatTutari,
-                    tarih = com.eray.muhasebeapp.getEpochMillis().toString()
-                )
-
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.createTahsilat(TahsilatRequest(musteriId = musteri.id ?: 0L, tutar = tahsilatTutari))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 tahsilatMusteri = null
             }
         )
     }
+
     raporMusteri?.let { musteri ->
         TarihAralikliSatisRaporDialog(
-            database = database,
+            apiService = apiService,
             musteri = musteri,
             onDismiss = { raporMusteri = null }
         )
@@ -269,7 +308,7 @@ fun MusterilerScreen(
 
     if (genelMusteriDialogAcikMi) {
         GenelMusteriSatisDialog(
-            database = database,
+            apiService = apiService,
             onDismiss = { genelMusteriDialogAcikMi = false }
         )
     }
@@ -282,8 +321,12 @@ fun MusterilerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        database.appDatabaseQueries.deleteMusteri(musteri.id)
-                        yenilemeTetikleyici++
+                        scope.launch {
+                            try {
+                                apiService.deleteMusteri(musteri.id ?: 0L)
+                                yenilemeTetikleyici++
+                            } catch (e: Exception) { e.printStackTrace() }
+                        }
                         silinecekMusteri = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
@@ -346,7 +389,7 @@ fun MusteriKart(musteri: Musteri, onTikla: () -> Unit, onSil: () -> Unit) {
 
 @Composable
 fun MusteriDetayDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     musteri: Musteri,
     onDismiss: () -> Unit,
     onDuzenle: () -> Unit,
@@ -357,14 +400,19 @@ fun MusteriDetayDialog(
     val urlAcici = rememberUrlAcici()
     val (bakiyeFormatli, renk) = bakiyeMetniVeRengi(musteri.bakiye)
 
-    val gecmisSatislar = remember(musteri.id) {
-        database.appDatabaseQueries.selectSatisByMusteriId(musteri.id).executeAsList().take(6)
-    }
+    var gecmisSatislar by remember { mutableStateOf<List<Satis>>(emptyList()) }
+    var satisKalemleri by remember { mutableStateOf<Map<Long, List<SatisKalemi>>>(emptyMap()) }
 
-    val satisKalemleri = remember(gecmisSatislar) {
-        gecmisSatislar.associate { satis ->
-            satis.id to database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList()
-        }
+    LaunchedEffect(musteri.id) {
+        try {
+            val tumSatislar = apiService.getSatislar().filter { it.musteriId == musteri.id }
+            gecmisSatislar = tumSatislar.take(6)
+            val kalemMap = mutableMapOf<Long, List<SatisKalemi>>()
+            gecmisSatislar.forEach { s ->
+                kalemMap[s.id ?: 0L] = apiService.getSatisKalemler(s.id ?: 0L)
+            }
+            satisKalemleri = kalemMap
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     AlertDialog(
@@ -459,7 +507,7 @@ fun MusteriDetayDialog(
                         gecmisSatislar.forEach { satis ->
                             GecmisSatisKarti(
                                 satis = satis,
-                                kalemler = satisKalemleri[satis.id] ?: emptyList()
+                                kalemler = satisKalemleri[satis.id ?: 0L] ?: emptyList()
                             )
                         }
                     }
@@ -518,7 +566,7 @@ fun TahsilatGirDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TarihAralikliSatisRaporDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     musteri: Musteri,
     onDismiss: () -> Unit
 ) {
@@ -528,13 +576,19 @@ fun TarihAralikliSatisRaporDialog(
     val baslangicTarihState = rememberDatePickerState()
     val bitisTarihState = rememberDatePickerState()
 
-    val tumSatislar = remember(musteri.id) {
-        database.appDatabaseQueries.selectSatisByMusteriId(musteri.id).executeAsList()
+    var tumSatislar by remember { mutableStateOf<List<Satis>>(emptyList()) }
+    var loadingSatislar by remember { mutableStateOf(true) }
+
+    LaunchedEffect(musteri.id) {
+        try {
+            tumSatislar = apiService.getSatislar().filter { it.musteriId == musteri.id }
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingSatislar = false }
     }
 
     val filtrelenmisSatislar = remember(tumSatislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
         tumSatislar.filter { satis ->
-            val satisZamani = satis.tarih.toLongOrNull() ?: 0L
+            val satisZamani = parseTarihMillis(satis.tarih)
             val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { satisZamani >= it } ?: true
             val bitisKosulu = bitisTarihState.selectedDateMillis?.let { satisZamani <= (it + 86400000L) } ?: true
             baslangicKosulu && bitisKosulu
@@ -546,9 +600,7 @@ fun TarihAralikliSatisRaporDialog(
     }
 
     val toplamRaporTutari = remember(filtrelenmisSatislar) {
-        filtrelenmisSatislar.sumOf { satis ->
-            database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList().sumOf { it.toplam }
-        }
+        filtrelenmisSatislar.sumOf { it.toplamTutar ?: 0.0 }
     }
 
     AlertDialog(
@@ -596,7 +648,9 @@ fun TarihAralikliSatisRaporDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (gruplanmisSatislar.isEmpty()) {
+                if (loadingSatislar) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (gruplanmisSatislar.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text("Seçilen aralıkta satış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
                     }
@@ -616,7 +670,10 @@ fun TarihAralikliSatisRaporDialog(
                                 )
                             }
                             items(satislarListesi) { satis ->
-                                val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList()
+                                var kalemler by remember { mutableStateOf<List<SatisKalemi>>(emptyList()) }
+                                LaunchedEffect(satis.id) {
+                                    try { kalemler = apiService.getSatisKalemler(satis.id ?: 0L) } catch (e: Exception) {}
+                                }
                                 val satisSaati = formatSaat(satis.tarih)
 
                                 Column(
@@ -701,7 +758,7 @@ fun TarihAralikliSatisRaporDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenelMusteriSatisDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     onDismiss: () -> Unit
 ) {
     var baslangicSeciciAcik by remember { mutableStateOf(false) }
@@ -710,13 +767,19 @@ fun GenelMusteriSatisDialog(
     val baslangicTarihState = rememberDatePickerState()
     val bitisTarihState = rememberDatePickerState()
 
-    val tumSatislar = remember {
-        database.appDatabaseQueries.selectSatisByMusteriIdNull().executeAsList()
+    var tumSatislar by remember { mutableStateOf<List<Satis>>(emptyList()) }
+    var loadingSatislar by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        try {
+            tumSatislar = apiService.getSatislar().filter { it.musteriId == null }
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingSatislar = false }
     }
 
     val filtrelenmisSatislar = remember(tumSatislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
         tumSatislar.filter { satis ->
-            val satisZamani = satis.tarih.toLongOrNull() ?: 0L
+            val satisZamani = parseTarihMillis(satis.tarih)
             val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { satisZamani >= it } ?: true
             val bitisKosulu = bitisTarihState.selectedDateMillis?.let { satisZamani <= (it + 86400000L) } ?: true
             baslangicKosulu && bitisKosulu
@@ -728,9 +791,7 @@ fun GenelMusteriSatisDialog(
     }
 
     val toplamRaporTutari = remember(filtrelenmisSatislar) {
-        filtrelenmisSatislar.sumOf { satis ->
-            database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList().sumOf { it.toplam }
-        }
+        filtrelenmisSatislar.sumOf { it.toplamTutar ?: 0.0 }
     }
 
     AlertDialog(
@@ -778,7 +839,9 @@ fun GenelMusteriSatisDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (gruplanmisSatislar.isEmpty()) {
+                if (loadingSatislar) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (gruplanmisSatislar.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text("Seçilen aralıkta satış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
                     }
@@ -798,7 +861,10 @@ fun GenelMusteriSatisDialog(
                                 )
                             }
                             items(satislarListesi) { satis ->
-                                val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(satis.id).executeAsList()
+                                var kalemler by remember { mutableStateOf<List<SatisKalemi>>(emptyList()) }
+                                LaunchedEffect(satis.id) {
+                                    try { kalemler = apiService.getSatisKalemler(satis.id ?: 0L) } catch (e: Exception) {}
+                                }
                                 val satisSaati = formatSaat(satis.tarih)
 
                                 Column(
@@ -896,7 +962,7 @@ fun GecmisSatisKarti(satis: Satis, kalemler: List<SatisKalemi>) {
             Text("Satış", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3C3C43))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    "₺${formatMusteriCariIkiBasamak(satis.toplamTutar)}",
+                    "₺${formatMusteriCariIkiBasamak(satis.toplamTutar ?: 0.0)}",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF34C759)
@@ -956,6 +1022,8 @@ fun IletisimButonu(
 
 @Composable
 fun MusteriEkleDialog(
+    isSaving: Boolean = false,
+    errorMessage: String? = null,
     onDismiss: () -> Unit,
     onKaydet: (ad: String, telefon: String, adres: String, bakiye: Double) -> Unit
 ) {
@@ -970,36 +1038,49 @@ fun MusteriEkleDialog(
         title = { Text("Yeni Müşteri Kaydı", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = ad, onValueChange = { ad = it }, label = { Text("Ad Soyad") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (errorMessage != null) {
+                    Text(errorMessage, color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedTextField(value = ad, onValueChange = { ad = it }, label = { Text("Ad Soyad") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !isSaving)
                 OutlinedTextField(
                     value = telefon,
                     onValueChange = { telefon = it },
                     label = { Text("Telefon (05XX XXX XX XX)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving
                 )
-                OutlinedTextField(value = adres, onValueChange = { adres = it }, label = { Text("Adres") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = adres, onValueChange = { adres = it }, label = { Text("Adres") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !isSaving)
                 OutlinedTextField(
                     value = bakiye,
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcu (₺)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving
                 )
+
+                if (isSaving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (ad.isNotBlank()) {
-                    val temizBakiyeText = bakiye.replace(',', '.')
-                    onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
+            TextButton(
+                enabled = !isSaving,
+                onClick = {
+                    if (ad.isNotBlank()) {
+                        val temizBakiyeText = bakiye.replace(',', '.')
+                        onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
+                    }
                 }
-            }) { Text("Kaydet", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
+            ) { Text(if (isSaving) "Kaydediliyor..." else "Kaydet", color = Color(0xFF007AFF), fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("İptal", color = Color(0xFF8E8E93)) }
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("İptal", color = Color(0xFF8E8E93)) }
         }
     )
 }
@@ -1100,9 +1181,21 @@ fun BakiyeDuzenleDialog(
     )
 }
 
-fun formatSaat(epochMillisStr: String): String {
-    val millis = epochMillisStr.toLongOrNull() ?: return ""
+// Hem ISO string ("2026-09-06T17:45:06") hem de milisaniye ("1725637200000") destekler
+fun formatSaat(tarih: String?): String {
+    if (tarih.isNullOrBlank()) return ""
 
+    if (tarih.contains("T")) {
+        return try {
+            val timePart = tarih.substringAfter("T")
+            val parts = timePart.split(":")
+            if (parts.size >= 2) "${parts[0]}:${parts[1]}" else timePart.take(5)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    val millis = tarih.toLongOrNull() ?: return ""
     val toplamSaniye = millis / 1000
     val gunIciSaniye = toplamSaniye % 86400
 

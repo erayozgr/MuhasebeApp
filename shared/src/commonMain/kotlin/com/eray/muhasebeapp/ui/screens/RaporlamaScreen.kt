@@ -1,6 +1,7 @@
 package com.eray.muhasebeapp.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -21,17 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
 import com.eray.muhasebeapp.IslemKaydi
 import com.eray.muhasebeapp.rememberDosyaPaylasici
 import com.eray.muhasebeapp.formatTarih
+import com.eray.muhasebeapp.parseTarihMillis
 import com.eray.muhasebeapp.excelXlsxOlustur
-import com.eray.muhasebeapp.database.Musteri
-import com.eray.muhasebeapp.database.Tedarikci
-import com.eray.muhasebeapp.database.SatisKalemi
-import com.eray.muhasebeapp.database.AlisKalemi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.selection.SelectionContainer
 
 enum class RaporDonemi(val etiket: String) {
@@ -55,9 +53,9 @@ fun donemBaslangicMillis(donem: RaporDonemi, simdiMillis: Long): Long? {
         val days = totalDays + 719468L
         val era = (if (days >= 0L) days else days - 146096L) / 146097L
         val doe = days - era * 146097L
-        val yoe = (doe - doe / 1460L + doe / 36524L - doe / 146096L) / 365L
+        val yoe = (doe - (doe / 1460L) + (doe / 36524L) - (doe / 146096L)) / 365L
         val y = yoe + era * 400L
-        val doy = doe - (365L * yoe + yoe / 4L - yoe / 100L)
+        val doy = doe - (365L * yoe + (yoe / 4L) - (yoe / 100L))
         val mp = (5 * doy + 2) / 153
         val d = doy - (153 * mp + 2) / 5 + 1
         val m = mp + if (mp < 10L) 3L else -9L
@@ -71,7 +69,7 @@ fun donemBaslangicMillis(donem: RaporDonemi, simdiMillis: Long): Long? {
         val era = (if (y >= 0L) y else y - 399L) / 400L
         val yoe = y - era * 400L
         val doy = (153 * m + 2L) / 5L + day.toLong() - 1L
-        val doe = yoe * 365L + yoe / 4L - yoe / 100L + doy
+        val doe = yoe * 365L + (yoe / 4L) - (yoe / 100L) + doy
         return era * 146097L + doe - 719468L
     }
 
@@ -104,10 +102,10 @@ fun donemBaslangicMillis(donem: RaporDonemi, simdiMillis: Long): Long? {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RaporlamaScreen(
-    database: AppDatabase,
-    simdiMillis: Long,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
+    val simdiMillis = remember { com.eray.muhasebeapp.getEpochMillis() }
     var yukleniyor by remember { mutableStateOf(true) }
     var hataMesaji by remember { mutableStateOf<String?>(null) }
     var gruplanmisIslemler by remember { mutableStateOf<Map<String, List<IslemKaydi>>>(emptyMap()) }
@@ -117,101 +115,98 @@ fun RaporlamaScreen(
     var toplamSatis by remember { mutableStateOf(0.0) }
     var toplamAlis by remember { mutableStateOf(0.0) }
     var toplamMasraf by remember { mutableStateOf(0.0) }
-    var toplamTahsilat by remember { mutableStateOf(0.0) } // 🎯 Eklendi
-    var toplamOdeme by remember { mutableStateOf(0.0) }    // 🎯 Eklendi
+    var toplamTahsilat by remember { mutableStateOf(0.0) }
+    var toplamOdeme by remember { mutableStateOf(0.0) }
     var netKar by remember { mutableStateOf(0.0) }
     var islemSayisi by remember { mutableStateOf(0) }
     var ortalamaSatisTutari by remember { mutableStateOf(0.0) }
 
-    var tumSatislarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Satis>>(emptyList()) }
-    var tumAlislarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Alis>>(emptyList()) }
-    var tumMasraflarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Masraf>>(emptyList()) }
-    var tumStoklarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.StokHareketi>>(emptyList()) }
-    var tumTahsilatlarHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.Tahsilat>>(emptyList()) }
-    var tumOdemelerHam by remember { mutableStateOf<List<com.eray.muhasebeapp.database.TedarikciOdemesi>>(emptyList()) }
-
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(seciliDonem, mevcutLimit) {
         yukleniyor = true
-        withContext(Dispatchers.Default) {
-            try {
-                val donemBaslangic = donemBaslangicMillis(seciliDonem, simdiMillis)
+        try {
+            val donemBaslangic = donemBaslangicMillis(seciliDonem, simdiMillis)
 
-                if (tumSatislarHam.isEmpty()) tumSatislarHam = database.appDatabaseQueries.selectAllSatis().executeAsList()
-                if (tumAlislarHam.isEmpty()) tumAlislarHam = database.appDatabaseQueries.selectAllAlis().executeAsList()
-                if (tumMasraflarHam.isEmpty()) tumMasraflarHam = database.appDatabaseQueries.selectAllMasraf().executeAsList()
-                if (tumStoklarHam.isEmpty()) tumStoklarHam = database.appDatabaseQueries.selectAllStokHareketi().executeAsList()
-                if (tumTahsilatlarHam.isEmpty()) tumTahsilatlarHam = database.appDatabaseQueries.selectAllTahsilat().executeAsList()
-                if (tumOdemelerHam.isEmpty()) tumOdemelerHam = database.appDatabaseQueries.selectAllTedarikciOdemesi().executeAsList()
+            val satislar = apiService.getSatislar()
+            val alislar = apiService.getAlislar()
+            val masraflar = apiService.getMasraflar()
+            val stoklar = apiService.getStokHareketleri()
+            val tahsilatlar = apiService.getTahsilatlar()
+            val odemeler = apiService.getTedarikciOdemeleri()
 
-                val satislarFiltreli = tumSatislarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
-                val alislarFiltreli = tumAlislarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
-                val masraflarFiltreli = tumMasraflarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
-                val stokHareketleriFiltreli = tumStoklarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
-                val tahsilatlarFiltreli = tumTahsilatlarHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
-                val odemelerFiltreli = tumOdemelerHam.filter { donemBaslangic == null || (it.tarih.toLongOrNull() ?: 0L) >= donemBaslangic }
+            val satislarFiltreli = satislar.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
+            val alislarFiltreli = alislar.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
+            val masraflarFiltreli = masraflar.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
+            val stokHareketleriFiltreli = stoklar.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
+            val tahsilatlarFiltreli = tahsilatlar.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
+            val odemelerFiltreli = odemeler.filter { donemBaslangic == null || parseTarihMillis(it.tarih) >= donemBaslangic }
 
-                toplamSatis = satislarFiltreli.sumOf { it.toplamTutar }
-                toplamAlis = alislarFiltreli.sumOf { it.toplamTutar }
-                toplamMasraf = masraflarFiltreli.sumOf { it.tutar }
-                toplamTahsilat = tahsilatlarFiltreli.sumOf { it.tutar } // 🎯 Eklendi
-                toplamOdeme = odemelerFiltreli.sumOf { it.tutar }       // 🎯 Eklendi
-                netKar = toplamSatis - toplamAlis - toplamMasraf
-                islemSayisi = satislarFiltreli.size
-                ortalamaSatisTutari = if (islemSayisi > 0) toplamSatis / islemSayisi else 0.0
+            toplamSatis = satislarFiltreli.sumOf { it.toplamTutar ?: 0.0 }
+            toplamAlis = alislarFiltreli.sumOf { it.toplamTutar ?: 0.0 }
+            toplamMasraf = masraflarFiltreli.sumOf { it.tutar ?: 0.0 }
+            toplamTahsilat = tahsilatlarFiltreli.sumOf { it.tutar ?: 0.0 }
+            toplamOdeme = odemelerFiltreli.sumOf { it.tutar ?: 0.0 }
+            netKar = toplamSatis - toplamAlis - toplamMasraf
+            islemSayisi = satislarFiltreli.size
+            ortalamaSatisTutari = if (islemSayisi > 0) toplamSatis / islemSayisi else 0.0
 
-                val hafifList = (satislarFiltreli.map { HafifIslem.S(it) } +
-                        alislarFiltreli.map { HafifIslem.A(it) } +
-                        masraflarFiltreli.map { HafifIslem.M(it) } +
-                        stokHareketleriFiltreli.map { HafifIslem.St(it) } +
-                        tahsilatlarFiltreli.map { HafifIslem.T(it) } +
-                        odemelerFiltreli.map { HafifIslem.O(it) })
-                    .sortedByDescending { it.tarih.toLongOrNull() ?: 0L }
+            val hafifList = (
+                    satislarFiltreli.map { HafifIslem.S(it) } +
+                            alislarFiltreli.map { HafifIslem.A(it) } +
+                            masraflarFiltreli.map { HafifIslem.M(it) } +
+                            stokHareketleriFiltreli.map { HafifIslem.St(it) } +
+                            tahsilatlarFiltreli.map { HafifIslem.T(it) } +
+                            odemelerFiltreli.map { HafifIslem.O(it) }
+                    )
+                // Önce gün, aynı gün içinde sadece ekranda görünen saat sırası.
+                .sortedWith(
+                    compareByDescending<HafifIslem> { islemGunAnahtari(it.tarih) }
+                        .thenByDescending { islemSaatAnahtari(it.tarih) }
+                )
 
-                val limitliHafifList = hafifList.take(mevcutLimit)
+            val limitliHafifList = hafifList.take(mevcutLimit)
 
-                val tamIslemler = limitliHafifList.map { hafif ->
-                    when (hafif) {
-                        is HafifIslem.S -> {
-                            val kalemler = database.appDatabaseQueries.selectKalemlerBySatisId(hafif.satis.id).executeAsList()
-                            IslemKaydi.SatisIslemi(hafif.satis, kalemler)
-                        }
-                        is HafifIslem.A -> {
-                            val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(hafif.alis.id).executeAsList()
-                            IslemKaydi.AlisIslemi(hafif.alis, kalemler)
-                        }
-                        is HafifIslem.M -> IslemKaydi.MasrafIslemi(hafif.masraf)
-                        is HafifIslem.St -> IslemKaydi.StokIslemi(hafif.stok)
-                        is HafifIslem.T -> IslemKaydi.TahsilatIslemi(hafif.tahsilat)
-                        is HafifIslem.O -> IslemKaydi.TedarikciOdemeIslemi(hafif.odeme)
+            val tamIslemler = limitliHafifList.map { hafif ->
+                when (hafif) {
+                    is HafifIslem.S -> {
+                        val kalemler = try { apiService.getSatisKalemler(hafif.satis.id ?: 0L) } catch (e: Exception) { emptyList() }
+                        IslemKaydi.SatisIslemi(hafif.satis, kalemler)
                     }
+                    is HafifIslem.A -> {
+                        val kalemler = try { apiService.getAlisKalemler(hafif.alis.id ?: 0L) } catch (e: Exception) { emptyList() }
+                        IslemKaydi.AlisIslemi(hafif.alis, kalemler)
+                    }
+                    is HafifIslem.M -> IslemKaydi.MasrafIslemi(hafif.masraf)
+                    is HafifIslem.St -> IslemKaydi.StokIslemi(hafif.stok)
+                    is HafifIslem.T -> IslemKaydi.TahsilatIslemi(hafif.tahsilat)
+                    is HafifIslem.O -> IslemKaydi.TedarikciOdemeIslemi(hafif.odeme)
+                }
+            }
+
+            gruplanmisIslemler = tamIslemler
+                .groupBy { islem -> formatTarih(islem.tarih).substringBefore(" ") }
+                .mapValues { (_, islemler) ->
+                    // Aynı gün içinde kategoriye bakma; yalnızca ekranda görünen saate göre sırala.
+                    islemler.sortedByDescending { islemSaatAnahtari(it.tarih) }
                 }
 
-                gruplanmisIslemler = tamIslemler.groupBy { islem -> formatTarih(islem.tarih).substringBefore(" ") }
-
-            } catch (e: Throwable) {
-                hataMesaji = "VERİ İŞLEME HATASI: ${e::class.simpleName}: ${e.message}\n${e.stackTraceToString().take(1500)}"
-            } finally {
-                yukleniyor = false
-            }
+        } catch (e: Throwable) {
+            hataMesaji = "VERİ İŞLEME HATASI: ${e::class.simpleName}: ${e.message}"
+        } finally {
+            yukleniyor = false
         }
     }
 
     if (hataMesaji != null) {
         Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("Bir hata oluştu, lütfen bu metni kopyala:", fontWeight = FontWeight.Bold, color = Color.Red)
+                Text("Bir hata oluştu:", fontWeight = FontWeight.Bold, color = Color.Red)
                 Spacer(modifier = Modifier.height(8.dp))
                 SelectionContainer { Text(hataMesaji ?: "", fontSize = 12.sp) }
+                Button(onClick = { hataMesaji = null; mevcutLimit = 30 }) { Text("Tekrar Dene") }
             }
-        }
-        return
-    }
-
-    if (yukleniyor && gruplanmisIslemler.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color(0xFF007AFF))
         }
         return
     }
@@ -258,6 +253,10 @@ fun RaporlamaScreen(
             contentPadding = scaffoldPadding,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (yukleniyor && gruplanmisIslemler.isEmpty()) {
+                item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+            }
+
             item {
                 Row(
                     modifier = Modifier
@@ -291,7 +290,6 @@ fun RaporlamaScreen(
                 }
             }
 
-            // 🎯 YENİ EKLEDİ: Ekranda nakit akışını takip etmek için Tahsilat ve Ödeme satırı eklendi
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp),
@@ -325,7 +323,7 @@ fun RaporlamaScreen(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    RaporOzetKart("İşlem Sayısı (Satış)", "$islemSayisi", Color(0xFF007AFF), Modifier.weight(1f))
+                    RaporOzetKart("İşlem Sayısı (Satış)", islemSayisi.toString(), Color(0xFF007AFF), Modifier.weight(1f))
                     RaporOzetKart("Ort. Satış Tutarı", "₺${formatRaporIkiBasamak(ortalamaSatisTutari)}", Color(0xFF5856D6), Modifier.weight(1f))
                 }
             }
@@ -353,10 +351,10 @@ fun RaporlamaScreen(
                 )
             }
 
-            if (gruplanmisIslemler.isEmpty()) {
+            if (gruplanmisIslemler.isEmpty() && !yukleniyor) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                        Text(if(yukleniyor) "Yükleniyor..." else "Henüz işlem yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
+                        Text("Henüz işlem yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
                     }
                 }
             } else {
@@ -398,64 +396,72 @@ fun RaporlamaScreen(
 
     if (detayliRaporDialogAcik) {
         DetayliRaporFiltreDialog(
-            database = database,
+            apiService = apiService,
             simdiMillis = simdiMillis,
             onDismiss = { detayliRaporDialogAcik = false },
             onRaporOlustur = { raporTuru, baslangicMs, bitisMs, seciliMusteriId, seciliTedarikciId ->
-                val filteredSatislar = tumSatislarHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    val musteriUyar = seciliMusteriId?.let { id -> it.musteriId == id } ?: true
-                    uyar && musteriUyar && (raporTuru == "Genel Rapor" || raporTuru == "Satış Raporu")
-                }
-                val filteredAlislar = tumAlislarHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    val tedarikciUyar = seciliTedarikciId?.let { id -> it.tedarikciId == id } ?: true
-                    uyar && tedarikciUyar && (raporTuru == "Genel Rapor" || raporTuru == "Alış Raporu")
-                }
-                val filteredMasraflar = tumMasraflarHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    uyar && (raporTuru == "Genel Rapor" || raporTuru == "Masraf Raporu")
-                }
-                val filteredStoklar = tumStoklarHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    uyar && (raporTuru == "Genel Rapor" || raporTuru == "Stok Hareketi Raporu")
-                }
-                val filteredTahsilatlar = tumTahsilatlarHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    val musteriUyar = seciliMusteriId?.let { id -> it.musteriId == id } ?: true
-                    uyar && musteriUyar && (raporTuru == "Genel Rapor" || raporTuru == "Tahsilat Raporu")
-                }
+                scope.launch {
+                    try {
+                        val satislar = apiService.getSatislar()
+                        val alislar = apiService.getAlislar()
+                        val masraflar = apiService.getMasraflar()
+                        val stoklar = apiService.getStokHareketleri()
+                        val tahsilatlar = apiService.getTahsilatlar()
+                        val odemeler = apiService.getTedarikciOdemeleri()
 
-                // Excel modülü için filtrelenmiş tedarikçi ödemeleri hazılanıyor
-                val filteredOdemeler = tumOdemelerHam.filter {
-                    val t = it.tarih.toLongOrNull() ?: 0L
-                    val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
-                    val tedarikciUyar = seciliTedarikciId?.let { id -> it.tedarikciId == id } ?: true
-                    uyar && tedarikciUyar && (raporTuru == "Genel Rapor" || raporTuru == "Alış Raporu")
+                        val filteredSatislar = satislar.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            val musteriUyar = seciliMusteriId?.let { id -> it.musteriId == id } ?: true
+                            uyar && musteriUyar && (raporTuru == "Genel Rapor" || raporTuru == "Satış Raporu")
+                        }
+                        val filteredAlislar = alislar.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            val tedarikciUyar = seciliTedarikciId?.let { id -> it.tedarikciId == id } ?: true
+                            uyar && tedarikciUyar && (raporTuru == "Genel Rapor" || raporTuru == "Alış Raporu")
+                        }
+                        val filteredMasraflar = masraflar.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            uyar && (raporTuru == "Genel Rapor" || raporTuru == "Masraf Raporu")
+                        }
+                        val filteredStoklar = stoklar.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            uyar && (raporTuru == "Genel Rapor" || raporTuru == "Stok Hareketi Raporu")
+                        }
+                        val filteredTahsilatlar = tahsilatlar.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            val musteriUyar = seciliMusteriId?.let { id -> it.musteriId == id } ?: true
+                            uyar && musteriUyar && (raporTuru == "Genel Rapor" || raporTuru == "Tahsilat Raporu")
+                        }
+                        val filteredOdemeler = odemeler.filter {
+                            val t = parseTarihMillis(it.tarih)
+                            val uyar = (baslangicMs?.let { b -> t >= b } ?: true) && (bitisMs?.let { b -> t <= (b + 86400000L) } ?: true)
+                            val tedarikciUyar = seciliTedarikciId?.let { id -> it.tedarikciId == id } ?: true
+                            uyar && tedarikciUyar && (raporTuru == "Genel Rapor" || raporTuru == "Alış Raporu")
+                        }
+
+                        val bytes = excelXlsxOlustur(
+                            satislar = filteredSatislar,
+                            alislar = filteredAlislar,
+                            masraflar = filteredMasraflar,
+                            stokHareketleri = filteredStoklar,
+                            tahsilatlar = filteredTahsilatlar,
+                            tedarikciOdemeleri = filteredOdemeler,
+                            raporTuru = raporTuru,
+                            satisKalemleriGetir = { id -> try { apiService.getSatisKalemler(id) } catch (e: Exception) { emptyList() } },
+                            alisKalemleriGetir = { id -> try { apiService.getAlisKalemler(id) } catch (e: Exception) { emptyList() } }
+                        )
+
+                        val bugununTarihi = formatTarih(simdiMillis.toString()).substringBefore(" ").replace(".", "-")
+                        val dosyaAdi = "${dosyaAdiIcinTemizle(raporTuru)}_$bugununTarihi.xlsx"
+                        dosyaPaylasici.paylasBytes(dosyaAdi, bytes)
+                    } catch (e: Exception) { e.printStackTrace() }
+                    finally { detayliRaporDialogAcik = false }
                 }
-
-                // 🎯 DÜZELTİLDİ: Artık Excel oluşturucuya filteredOdemeler listesi güvenle gönderiliyor.
-                val bytes = excelXlsxOlustur(
-                    satislar = filteredSatislar,
-                    alislar = filteredAlislar,
-                    masraflar = filteredMasraflar,
-                    stokHareketleri = filteredStoklar,
-                    tahsilatlar = filteredTahsilatlar,
-                    tedarikciOdemeleri = filteredOdemeler, // 🚀 Eksik olan parametre bağlandı!
-                    raporTuru = raporTuru,
-                    satisKalemleriGetir = { satisId -> database.appDatabaseQueries.selectKalemlerBySatisId(satisId).executeAsList() },
-                    alisKalemleriGetir = { alisId -> database.appDatabaseQueries.selectKalemlerByAlisId(alisId).executeAsList() }
-                )
-
-                val bugununTarihi = formatTarih(simdiMillis.toString()).substringBefore(" ").replace(".", "-")
-                val dosyaAdi = "${dosyaAdiIcinTemizle(raporTuru)}_$bugununTarihi.xlsx"
-                dosyaPaylasici.paylasBytes(dosyaAdi, bytes)
-                detayliRaporDialogAcik = false
             }
         )
     }
@@ -464,30 +470,35 @@ fun RaporlamaScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetayliRaporFiltreDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     simdiMillis: Long,
     onDismiss: () -> Unit,
     onRaporOlustur: (raporTuru: String, baslangic: Long?, bitis: Long?, musteriId: Long?, tedarikciId: Long?) -> Unit
 ) {
     var raporTuru by remember { mutableStateOf("Genel Rapor") }
     var raporTuruMenuAcik by remember { mutableStateOf(false) }
-
     var seciliDialogDonem by remember { mutableStateOf(RaporDonemi.TUM_ZAMANLAR) }
     var donemMenuAcik by remember { mutableStateOf(false) }
 
-    val musteriler = remember { database.appDatabaseQueries.selectAllMusteri().executeAsList() }
+    var musteriler by remember { mutableStateOf<List<Musteri>>(emptyList()) }
     var seciliMusteri by remember { mutableStateOf<Musteri?>(null) }
     var musteriMenuAcik by remember { mutableStateOf(false) }
 
-    val tedarikciler = remember { database.appDatabaseQueries.selectAllTedarikci().executeAsList() }
+    var tedarikciler by remember { mutableStateOf<List<Tedarikci>>(emptyList()) }
     var seciliTedarikci by remember { mutableStateOf<Tedarikci?>(null) }
     var tedarikciMenuAcik by remember { mutableStateOf(false) }
 
     var baslangicPickerAcik by remember { mutableStateOf(false) }
     var bitisPickerAcik by remember { mutableStateOf(false) }
-
     val baslangicState = rememberDatePickerState()
     val bitisState = rememberDatePickerState()
+
+    LaunchedEffect(Unit) {
+        try {
+            musteriler = apiService.getMusteriler()
+            tedarikciler = apiService.getTedarikciler()
+        } catch (e: Exception) {}
+    }
 
     val raporTurleri = listOf("Genel Rapor", "Satış Raporu", "Alış Raporu", "Masraf Raporu", "Stok Hareketi Raporu", "Tahsilat Raporu")
 
@@ -501,19 +512,16 @@ fun DetayliRaporFiltreDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("Rapor İçeriği Seçin", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                ExposedDropdownMenuBox(
-                    expanded = raporTuruMenuAcik,
-                    onExpandedChange = { raporTuruMenuAcik = it }
-                ) {
+                Box {
                     OutlinedTextField(
                         value = raporTuru,
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = raporTuruMenuAcik) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        trailingIcon = { IconButton(onClick = {raporTuruMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                        modifier = Modifier.fillMaxWidth().clickable { raporTuruMenuAcik = true },
                         shape = RoundedCornerShape(8.dp)
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = raporTuruMenuAcik,
                         onDismissRequest = { raporTuruMenuAcik = false },
                         modifier = Modifier.background(Color.White)
@@ -530,20 +538,17 @@ fun DetayliRaporFiltreDialog(
                     }
                 }
 
-                Text("Dönem Seçin (Hazız Filtre)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                ExposedDropdownMenuBox(
-                    expanded = donemMenuAcik,
-                    onExpandedChange = { donemMenuAcik = it }
-                ) {
+                Text("Dönem Seçin (Hazır Filtre)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                Box {
                     OutlinedTextField(
                         value = seciliDialogDonem.etiket,
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = donemMenuAcik) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        trailingIcon = { IconButton(onClick = {donemMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                        modifier = Modifier.fillMaxWidth().clickable { donemMenuAcik = true },
                         shape = RoundedCornerShape(8.dp)
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = donemMenuAcik,
                         onDismissRequest = { donemMenuAcik = false },
                         modifier = Modifier.background(Color.White)
@@ -562,19 +567,16 @@ fun DetayliRaporFiltreDialog(
 
                 if (raporTuru == "Satış Raporu" || raporTuru == "Tahsilat Raporu") {
                     Text("Filtrelenecek Müşteri", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                    ExposedDropdownMenuBox(
-                        expanded = musteriMenuAcik,
-                        onExpandedChange = { musteriMenuAcik = it }
-                    ) {
+                    Box {
                         OutlinedTextField(
                             value = seciliMusteri?.ad ?: "Tüm Müşteriler",
                             onValueChange = {},
                             readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = musteriMenuAcik) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            trailingIcon = { IconButton(onClick = {musteriMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                            modifier = Modifier.fillMaxWidth().clickable { musteriMenuAcik = true },
                             shape = RoundedCornerShape(8.dp)
                         )
-                        ExposedDropdownMenu(
+                        DropdownMenu(
                             expanded = musteriMenuAcik,
                             onDismissRequest = { musteriMenuAcik = false },
                             modifier = Modifier.background(Color.White)
@@ -601,19 +603,16 @@ fun DetayliRaporFiltreDialog(
 
                 if (raporTuru == "Alış Raporu") {
                     Text("Filtrelenecek Tedarikçi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                    ExposedDropdownMenuBox(
-                        expanded = tedarikciMenuAcik,
-                        onExpandedChange = { tedarikciMenuAcik = it }
-                    ) {
+                    Box {
                         OutlinedTextField(
                             value = seciliTedarikci?.ad ?: "Tüm Tedarikçiler",
                             onValueChange = {},
                             readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tedarikciMenuAcik) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            trailingIcon = { IconButton(onClick = {tedarikciMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                            modifier = Modifier.fillMaxWidth().clickable { tedarikciMenuAcik = true },
                             shape = RoundedCornerShape(8.dp)
                         )
-                        ExposedDropdownMenu(
+                        DropdownMenu(
                             expanded = tedarikciMenuAcik,
                             onDismissRequest = { tedarikciMenuAcik = false },
                             modifier = Modifier.background(Color.White)
@@ -734,8 +733,8 @@ private fun IslemKart(islem: IslemKaydi) {
         is IslemKaydi.MasrafIslemi -> {
             IslemGoruntu(
                 "Masraf",
-                islem.masraf.kategori,
-                islem.masraf.tutar,
+                islem.masraf.kategori ?: "-",
+                islem.masraf.tutar ?: 0.0,
                 Color(0xFFFF3B30),
                 Icons.Default.Receipt
             )
@@ -746,31 +745,33 @@ private fun IslemKart(islem: IslemKaydi) {
         )
         is IslemKaydi.SatisIslemi -> {
             val urunListesi = islem.kalemler.joinToString(", ") { "${it.urunAdi} x${it.adet}" }
+            val musteriGoster = islem.satis.musteriAdi ?: "Genel Müşteri"
             IslemGoruntu(
                 "Satış",
-                if (urunListesi.isNotEmpty()) "$urunListesi\n${islem.satis.musteriAdi}" else islem.satis.musteriAdi,
-                islem.satis.toplamTutar, Color(0xFF34C759), Icons.Default.TrendingUp
+                if (urunListesi.isNotEmpty()) "$urunListesi\n$musteriGoster" else musteriGoster,
+                islem.satis.toplamTutar ?: 0.0, Color(0xFF34C759), Icons.Default.TrendingUp
             )
         }
         is IslemKaydi.AlisIslemi -> {
             val urunListesi = islem.kalemler.joinToString(", ") { "${it.urunAdi} x${it.adet}" }
+            val tedarikciGoster = islem.alis.tedarikciAdi ?: "Tedarikçi"
             IslemGoruntu(
                 "Alış",
-                if (urunListesi.isNotEmpty()) "$urunListesi\n${islem.alis.tedarikciAdi}" else islem.alis.tedarikciAdi,
-                islem.alis.toplamTutar, Color(0xFFFF9500), Icons.Default.ShoppingBag
+                if (urunListesi.isNotEmpty()) "$urunListesi\n$tedarikciGoster" else tedarikciGoster,
+                islem.alis.toplamTutar ?: 0.0, Color(0xFFFF9500), Icons.Default.ShoppingBag
             )
         }
         is IslemKaydi.TahsilatIslemi -> IslemGoruntu(
             "Tahsilat (Ödeme Alındı)",
-            "${islem.tahsilat.musteriAdi} tarafından yapılan ödeme",
-            islem.tahsilat.tutar,
+            "${islem.tahsilat.musteriAdi ?: "Müşteri"} tarafından yapılan ödeme",
+            islem.tahsilat.tutar ?: 0.0,
             Color(0xFF34C759),
             Icons.Default.Payments
         )
         is IslemKaydi.TedarikciOdemeIslemi -> IslemGoruntu(
             "Tedarikçiye Ödeme Yapıldı",
-            "${islem.odeme.tedarikciAdi} firmasına yapılan nakit/havale",
-            islem.odeme.tutar,
+            "${islem.odeme.tedarikciAdi ?: "Tedarikçi"} firmasına yapılan nakit/havale",
+            islem.odeme.tutar ?: 0.0,
             Color(0xFFFF3B30),
             Icons.Default.Payments
         )
@@ -817,12 +818,6 @@ private data class IslemGoruntu(
     val ikon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
-private operator fun IslemGoruntu.component1() = baslik
-private operator fun IslemGoruntu.component2() = altBaslik
-private operator fun IslemGoruntu.component3() = tutar
-private operator fun IslemGoruntu.component4() = renk
-private operator fun IslemGoruntu.component5() = ikon
-
 private fun formatRaporIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger
@@ -842,11 +837,38 @@ private fun dosyaAdiIcinTemizle(metin: String): String = metin
     .replace("ü", "u").replace("Ü", "U")
     .replace("ö", "o").replace("Ö", "O")
 
+private fun islemSaatAnahtari(tarih: String): Int {
+    // Sıralamayı kartta gerçekten gösterilen saat üzerinden yapıyoruz.
+    // Böylece ham tarih alanının epoch/string olması veya kategoriye göre farklılaşması etkilemez.
+    val formatli = formatTarih(tarih)
+    val eslesme = Regex("""(\d{1,2}):(\d{2})(?::(\d{2}))?""").find(formatli)
+        ?: return 0
+
+    val saat = eslesme.groupValues.getOrNull(1)?.toIntOrNull() ?: 0
+    val dakika = eslesme.groupValues.getOrNull(2)?.toIntOrNull() ?: 0
+    val saniye = eslesme.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+
+    return saat * 3600 + dakika * 60 + saniye
+}
+
+private fun islemGunAnahtari(tarih: String): Int {
+    // Gün gruplarının da en yeniden eskiye kalması için sadece tarih kısmını anahtar yapıyoruz.
+    val formatli = formatTarih(tarih)
+    val eslesme = Regex("""(\d{1,2})[./-](\d{1,2})[./-](\d{4})""").find(formatli)
+        ?: return 0
+
+    val gun = eslesme.groupValues.getOrNull(1)?.toIntOrNull() ?: 0
+    val ay = eslesme.groupValues.getOrNull(2)?.toIntOrNull() ?: 0
+    val yil = eslesme.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+
+    return yil * 10000 + ay * 100 + gun
+}
+
 sealed class HafifIslem(val tarih: String) {
-    class S(val satis: com.eray.muhasebeapp.database.Satis) : HafifIslem(satis.tarih)
-    class A(val alis: com.eray.muhasebeapp.database.Alis) : HafifIslem(alis.tarih)
-    class M(val masraf: com.eray.muhasebeapp.database.Masraf) : HafifIslem(masraf.tarih)
-    class St(val stok: com.eray.muhasebeapp.database.StokHareketi) : HafifIslem(stok.tarih)
-    class T(val tahsilat: com.eray.muhasebeapp.database.Tahsilat) : HafifIslem(tahsilat.tarih)
-    class O(val odeme: com.eray.muhasebeapp.database.TedarikciOdemesi) : HafifIslem(odeme.tarih)
+    class S(val satis: Satis) : HafifIslem(satis.tarih ?: "")
+    class A(val alis: Alis) : HafifIslem(alis.tarih ?: "")
+    class M(val masraf: Masraf) : HafifIslem(masraf.tarih ?: "")
+    class St(val stok: StokHareketi) : HafifIslem(stok.tarih ?: "")
+    class T(val tahsilat: Tahsilat) : HafifIslem(tahsilat.tarih ?: "")
+    class O(val odeme: TedarikciOdemesi) : HafifIslem(odeme.tarih ?: "")
 }

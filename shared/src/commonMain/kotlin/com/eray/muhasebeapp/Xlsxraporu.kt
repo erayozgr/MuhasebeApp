@@ -1,29 +1,12 @@
 package com.eray.muhasebeapp
 
-import com.eray.muhasebeapp.database.Alis
-import com.eray.muhasebeapp.database.AlisKalemi
-import com.eray.muhasebeapp.database.Masraf
-import com.eray.muhasebeapp.database.Satis
-import com.eray.muhasebeapp.database.SatisKalemi
-import com.eray.muhasebeapp.database.StokHareketi
-import com.eray.muhasebeapp.database.Tahsilat
-import com.eray.muhasebeapp.database.TedarikciOdemesi
+import com.eray.muhasebeapp.data.model.*
 
 /**
  * Android + iOS (Kotlin Multiplatform) uyumlu, harici Excel kutuphanesi kullanmadan
  * gercek .xlsx dosyasi ureten rapor modulu.
- *
- * Ozellikler:
- * - Genel / Satis / Alis / Masraf / Stok / Tahsilat raporlari
- * - Alis raporunda tedarikci odemeleri de bulunur
- * - Tarih araligi bilgisi
- * - Profesyonel basliklar, toplam satirlari ve TL bicimi
- * - Otomatik filtre
- * - Sabitlenen baslik satiri (freeze pane)
- * - Ayarlanmis sutun genislikleri
- * - Excel / Apple Numbers / Google Sheets uyumlu OOXML
  */
-fun excelXlsxOlustur(
+suspend fun excelXlsxOlustur(
     satislar: List<Satis>,
     alislar: List<Alis>,
     masraflar: List<Masraf>,
@@ -31,23 +14,23 @@ fun excelXlsxOlustur(
     tahsilatlar: List<Tahsilat> = emptyList(),
     tedarikciOdemeleri: List<TedarikciOdemesi> = emptyList(),
     raporTuru: String = "Genel Rapor",
-    satisKalemleriGetir: (Long) -> List<SatisKalemi> = { emptyList() },
-    alisKalemleriGetir: (Long) -> List<AlisKalemi> = { emptyList() },
+    satisKalemleriGetir: suspend (Long) -> List<SatisKalemi> = { emptyList() },
+    alisKalemleriGetir: suspend (Long) -> List<AlisKalemi> = { emptyList() },
     baslangicMs: Long? = null,
     bitisMs: Long? = null
 ): ByteArray {
 
-    val toplamSatis = satislar.sumOf { it.toplamTutar }
-    val toplamAlis = alislar.sumOf { it.toplamTutar }
-    val toplamMasraf = masraflar.sumOf { it.tutar }
-    val toplamTahsilat = tahsilatlar.sumOf { it.tutar }
-    val toplamTedarikciOdemesi = tedarikciOdemeleri.sumOf { it.tutar }
+    val toplamSatis = satislar.sumOf { it.toplamTutar ?: 0.0 }
+    val toplamAlis = alislar.sumOf { it.toplamTutar ?: 0.0 }
+    val toplamMasraf = masraflar.sumOf { it.tutar ?: 0.0 }
+    val toplamTahsilat = tahsilatlar.sumOf { it.tutar ?: 0.0 }
+    val toplamTedarikciOdemesi = tedarikciOdemeleri.sumOf { it.tutar ?: 0.0 }
 
     val brutKar = toplamSatis - toplamAlis
     val netKar = toplamSatis - toplamAlis - toplamMasraf
     val ortalamaSatis = if (satislar.isNotEmpty()) toplamSatis / satislar.size else 0.0
     val ortalamaAlis = if (alislar.isNotEmpty()) toplamAlis / alislar.size else 0.0
-    val stokHareketToplami = stokHareketleri.sumOf { it.birimFiyat * it.miktar }
+    val stokHareketToplami = stokHareketleri.sumOf { (it.birimFiyat ?: 0.0) * (it.miktar ?: 0L) }
 
     val donemMetni = raporDonemMetni(baslangicMs, bitisMs)
 
@@ -100,7 +83,7 @@ fun excelXlsxOlustur(
         return b.build()
     }
 
-    fun satislarSheet(): WorksheetData {
+    suspend fun satislarSheet(): WorksheetData {
         val b = SheetBuilder(
             widths = listOf(20.0, 28.0, 34.0, 12.0, 14.0, 18.0, 18.0),
             tabColor = "34C759"
@@ -120,28 +103,29 @@ fun excelXlsxOlustur(
 
         var detaySatirSayisi = 0
         satislar.forEach { s ->
-            val kalemler = satisKalemleriGetir(s.id)
+            val kalemler = satisKalemleriGetir(s.id ?: 0L)
+            val musteriAdiGoster = s.musteriAdi ?: "Genel Müşteri"
             if (kalemler.isEmpty()) {
                 b.row(
                     Cell.Text(raporTarih(s.tarih), S_DATE_TEXT),
-                    Cell.Text(s.musteriAdi),
+                    Cell.Text(musteriAdiGoster),
                     Cell.Text("-"),
                     Cell.Text("-", S_CENTER),
                     Cell.Text("-", S_CENTER),
                     Cell.Text("-", S_CENTER),
-                    Cell.Num(s.toplamTutar, S_CURRENCY)
+                    Cell.Num(s.toplamTutar ?: 0.0, S_CURRENCY)
                 )
                 detaySatirSayisi++
             } else {
                 kalemler.forEach { k ->
                     b.row(
                         Cell.Text(raporTarih(s.tarih), S_DATE_TEXT),
-                        Cell.Text(s.musteriAdi),
+                        Cell.Text(musteriAdiGoster),
                         Cell.Text(k.urunAdi),
-                        Cell.Num(k.adet.toDouble(), S_INTEGER),
-                        Cell.Text(k.birim, S_CENTER),
-                        Cell.Num(k.birimFiyat, S_CURRENCY),
-                        Cell.Num(k.toplam, S_CURRENCY)
+                        Cell.Num((k.adet ?: 0L).toDouble(), S_INTEGER),
+                        Cell.Text(k.birim ?: "-", S_CENTER),
+                        Cell.Num(k.birimFiyat ?: 0.0, S_CURRENCY),
+                        Cell.Num(k.toplam ?: 0.0, S_CURRENCY)
                     )
                     detaySatirSayisi++
                 }
@@ -160,7 +144,7 @@ fun excelXlsxOlustur(
         return b.build()
     }
 
-    fun alislarSheet(): WorksheetData {
+    suspend fun alislarSheet(): WorksheetData {
         val b = SheetBuilder(
             widths = listOf(20.0, 28.0, 34.0, 12.0, 18.0, 18.0),
             tabColor = "FF9500"
@@ -179,26 +163,27 @@ fun excelXlsxOlustur(
 
         var detaySatirSayisi = 0
         alislar.forEach { a ->
-            val kalemler = alisKalemleriGetir(a.id)
+            val kalemler = alisKalemleriGetir(a.id ?: 0L)
+            val tedarikciGoster = a.tedarikciAdi ?: "Tedarikçi"
             if (kalemler.isEmpty()) {
                 b.row(
                     Cell.Text(raporTarih(a.tarih), S_DATE_TEXT),
-                    Cell.Text(a.tedarikciAdi),
+                    Cell.Text(tedarikciGoster),
                     Cell.Text("-"),
                     Cell.Text("-", S_CENTER),
                     Cell.Text("-", S_CENTER),
-                    Cell.Num(a.toplamTutar, S_CURRENCY)
+                    Cell.Num(a.toplamTutar ?: 0.0, S_CURRENCY)
                 )
                 detaySatirSayisi++
             } else {
                 kalemler.forEach { k ->
                     b.row(
                         Cell.Text(raporTarih(a.tarih), S_DATE_TEXT),
-                        Cell.Text(a.tedarikciAdi),
+                        Cell.Text(tedarikciGoster),
                         Cell.Text(k.urunAdi),
-                        Cell.Num(k.adet.toDouble(), S_INTEGER),
-                        Cell.Num(k.birimFiyat, S_CURRENCY),
-                        Cell.Num(k.toplam, S_CURRENCY)
+                        Cell.Num((k.adet ?: 0L).toDouble(), S_INTEGER),
+                        Cell.Num(k.birimFiyat ?: 0.0, S_CURRENCY),
+                        Cell.Num(k.toplam ?: 0.0, S_CURRENCY)
                     )
                     detaySatirSayisi++
                 }
@@ -233,9 +218,9 @@ fun excelXlsxOlustur(
         masraflar.forEach { m ->
             b.row(
                 Cell.Text(raporTarih(m.tarih), S_DATE_TEXT),
-                Cell.Text(m.kategori),
-                Cell.Text(m.aciklama),
-                Cell.Num(m.tutar, S_CURRENCY)
+                Cell.Text(m.kategori ?: "-"),
+                Cell.Text(m.aciklama ?: "-"),
+                Cell.Num(m.tutar ?: 0.0, S_CURRENCY)
             )
         }
         val lastDataRow = if (masraflar.isNotEmpty()) b.currentRowNumber else headerRow
@@ -266,14 +251,16 @@ fun excelXlsxOlustur(
             Cell.Text("Tutar", S_HEADER)
         )
         stokHareketleri.forEach { h ->
+            val birimFiyat = h.birimFiyat ?: 0.0
+            val miktar = h.miktar ?: 0L
             b.row(
                 Cell.Text(raporTarih(h.tarih), S_DATE_TEXT),
                 Cell.Text(h.urunAdi),
                 Cell.Text(h.hareketTuru),
-                Cell.Num(h.miktar.toDouble(), S_INTEGER),
-                Cell.Num(h.birimFiyat, S_CURRENCY),
-                Cell.Text(h.aciklama),
-                Cell.Num(h.birimFiyat * h.miktar, S_CURRENCY)
+                Cell.Num(miktar.toDouble(), S_INTEGER),
+                Cell.Num(birimFiyat, S_CURRENCY),
+                Cell.Text(h.aciklama ?: "-"),
+                Cell.Num(birimFiyat * miktar, S_CURRENCY)
             )
         }
         val lastDataRow = if (stokHareketleri.isNotEmpty()) b.currentRowNumber else headerRow
@@ -304,8 +291,8 @@ fun excelXlsxOlustur(
         tahsilatlar.forEach { t ->
             b.row(
                 Cell.Text(raporTarih(t.tarih), S_DATE_TEXT),
-                Cell.Text(t.musteriAdi),
-                Cell.Num(t.tutar, S_CURRENCY)
+                Cell.Text(t.musteriAdi ?: "Müşteri"),
+                Cell.Num(t.tutar ?: 0.0, S_CURRENCY)
             )
         }
         val lastDataRow = if (tahsilatlar.isNotEmpty()) b.currentRowNumber else headerRow
@@ -334,8 +321,8 @@ fun excelXlsxOlustur(
         tedarikciOdemeleri.forEach { o ->
             b.row(
                 Cell.Text(raporTarih(o.tarih), S_DATE_TEXT),
-                Cell.Text(o.tedarikciAdi),
-                Cell.Num(o.tutar, S_CURRENCY)
+                Cell.Text(o.tedarikciAdi ?: "Tedarikçi"),
+                Cell.Num(o.tutar ?: 0.0, S_CURRENCY)
             )
         }
         val lastDataRow = if (tedarikciOdemeleri.isNotEmpty()) b.currentRowNumber else headerRow
@@ -397,8 +384,11 @@ private fun raporDonemMetni(baslangicMs: Long?, bitisMs: Long?): String {
     return "$baslangic - $bitis"
 }
 
-private fun raporTarih(raw: String): String =
-    formatTarih(raw).substringBefore(" ")
+// Nullable String kabul edecek sekilde guncellendi
+private fun raporTarih(raw: String?): String {
+    if (raw.isNullOrBlank()) return "-"
+    return formatTarih(raw).substringBefore(" ")
+}
 
 // -----------------------------------------------------------------------------
 // XLSX MODEL
@@ -413,9 +403,10 @@ private data class WorksheetData(
     val xml: String
 )
 
+// Cell.Text ve Cell.Num nullable degerleri guvenle kabul edecek sekilde esnetildi
 private sealed class Cell {
-    data class Text(val value: String, val style: Int = S_DEFAULT) : Cell()
-    data class Num(val value: Double, val style: Int = S_NUMBER) : Cell()
+    data class Text(val value: String?, val style: Int = S_DEFAULT) : Cell()
+    data class Num(val value: Double?, val style: Int = S_NUMBER) : Cell()
 }
 
 private const val S_DEFAULT = 0
@@ -546,14 +537,15 @@ $mergeXml
     }
 }
 
-private fun textCell(ref: String, value: String, style: Int): String {
-    val escaped = xmlEsc(value)
-    val preserve = if (value.startsWith(" ") || value.endsWith(" ") || value.contains("\n")) " xml:space=\"preserve\"" else ""
+private fun textCell(ref: String, value: String?, style: Int): String {
+    val str = value ?: ""
+    val escaped = xmlEsc(str)
+    val preserve = if (str.startsWith(" ") || str.endsWith(" ") || str.contains("\n")) " xml:space=\"preserve\"" else ""
     return "<c r=\"$ref\" t=\"inlineStr\" s=\"$style\"><is><t$preserve>$escaped</t></is></c>"
 }
 
-private fun numberCell(ref: String, value: Double, style: Int): String =
-    "<c r=\"$ref\" s=\"$style\"><v>${fmtNum(value)}</v></c>"
+private fun numberCell(ref: String, value: Double?, style: Int): String =
+    "<c r=\"$ref\" s=\"$style\"><v>${fmtNum(value ?: 0.0)}</v></c>"
 
 private fun colLetter(zeroBasedIndex: Int): String {
     var n = zeroBasedIndex + 1

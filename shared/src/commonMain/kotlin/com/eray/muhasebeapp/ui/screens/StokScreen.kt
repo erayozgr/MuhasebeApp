@@ -20,23 +20,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.UrunEntity
-import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StokScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
     var yenilemeTetikleyici by remember { mutableStateOf(0) }
-    val urunler = remember(yenilemeTetikleyici) {
-        database.appDatabaseQueries.selectAllUrun().executeAsList()
+    var urunler by remember { mutableStateOf<List<Urun>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(yenilemeTetikleyici) {
+        loading = true
+        try {
+            urunler = apiService.getUrunler()
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loading = false }
     }
 
     var aramaMetni by remember { mutableStateOf("") }
-    var seciliUrun by remember { mutableStateOf<UrunEntity?>(null) }
+    var seciliUrun by remember { mutableStateOf<Urun?>(null) }
 
     val filtreliUrunler = remember(urunler, aramaMetni) {
         if (aramaMetni.isBlank()) urunler
@@ -48,7 +56,6 @@ fun StokScreen(
     val kritikStoklar = urunler.filter { it.stokAdedi <= 5L }
     val toplamStokAdedi = urunler.sumOf { it.stokAdedi }
 
-    // Sağa kaydırarak geri dönme (Swipe Back) durumu
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
     Scaffold(
@@ -57,7 +64,6 @@ fun StokScreen(
             detectHorizontalDragGestures(
                 onDragStart = { horizontalDragAccumulator = 0f },
                 onDragEnd = {
-                    // Sağa doğru yeterli miktarda kaydırıldıysa ana menüye döner
                     if (horizontalDragAccumulator > 150f) {
                         onNavigateBack()
                     }
@@ -82,6 +88,9 @@ fun StokScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (loading && urunler.isEmpty()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
             // ÜST ÖZET KARTLARI
             Row(
@@ -116,7 +125,7 @@ fun StokScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
 
-            if (filtreliUrunler.isEmpty()) {
+            if (filtreliUrunler.isEmpty() && !loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Ürün bulunamadı", color = Color(0xFF8E8E93), fontSize = 15.sp)
                 }
@@ -142,25 +151,22 @@ fun StokScreen(
             urun = urun,
             onDismiss = { seciliUrun = null },
             onKaydet = { hareketTuru, miktar, aciklama ->
-                val yeniStok = when (hareketTuru) {
-                    "Giriş" -> urun.stokAdedi + miktar
-                    "Çıkış" -> (urun.stokAdedi - miktar).coerceAtLeast(0)
-                    else -> urun.stokAdedi
+                scope.launch {
+                    try {
+                        apiService.createStokHareketi(
+                            StokHareketi(
+                                urunId = urun.id ?: 0L,
+                                urunAdi = urun.ad,
+                                hareketTuru = hareketTuru,
+                                miktar = miktar.toLong(),
+                                birimFiyat = 0.0,
+                                aciklama = aciklama.ifBlank { "Manuel düzeltme" },
+                                tarih = com.eray.muhasebeapp.getEpochMillis().toString()
+                            )
+                        )
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
                 }
-                val queries = database.appDatabaseQueries
-                queries.transaction {
-                    queries.updateUrunStok(yeniStok, urun.id)
-                    queries.insertStokHareketi(
-                        urunId = urun.id,
-                        urunAdi = urun.ad,
-                        hareketTuru = hareketTuru,
-                        miktar = miktar.toLong(),
-                        birimFiyat = 0.0,
-                        aciklama = aciklama.ifBlank { "Manuel düzeltme" },
-                        tarih = getEpochMillis().toString()
-                    )
-                }
-                yenilemeTetikleyici++
                 seciliUrun = null
             }
         )
@@ -168,7 +174,7 @@ fun StokScreen(
 }
 
 @Composable
-private fun StokKart(urun: UrunEntity, onDuzenle: () -> Unit) {
+private fun StokKart(urun: Urun, onDuzenle: () -> Unit) {
     val kritikMi = urun.stokAdedi <= 5L
     val renk = if (kritikMi) Color(0xFFFF3B30) else Color(0xFF5AC8FA)
 
@@ -216,7 +222,7 @@ private fun StokKart(urun: UrunEntity, onDuzenle: () -> Unit) {
 
 @Composable
 private fun StokDuzenleDialog(
-    urun: UrunEntity,
+    urun: Urun,
     onDismiss: () -> Unit,
     onKaydet: (hareketTuru: String, miktar: Int, aciklama: String) -> Unit
 ) {
@@ -263,7 +269,6 @@ private fun StokDuzenleDialog(
                     onValueChange = { miktarText = it },
                     label = { Text("Miktar") },
                     singleLine = true,
-                    // 🎯 Sayısal klavyeyi aktif ediyoruz
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -279,10 +284,7 @@ private fun StokDuzenleDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                // 🎯 iOS Sayı Klavyesinden gelebilecek kazara virgül ya da kopyalama hatalarını önlemek için temizliyoruz
                 val temizMiktarText = miktarText.replace(',', '.')
-
-                // Double olarak parse edip integer'a yuvarlıyoruz (Örn: 10.0 veya 10.5 yazılırsa çökmeden 10 yapar)
                 val miktar = temizMiktarText.toDoubleOrNull()?.toInt() ?: temizMiktarText.toIntOrNull() ?: 0
 
                 if (miktar > 0) {

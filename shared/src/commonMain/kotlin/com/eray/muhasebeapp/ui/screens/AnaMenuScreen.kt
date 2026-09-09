@@ -24,9 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.PlatformDatabaseManager
-import com.eray.muhasebeapp.rememberDosyaPaylasici
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
 
 data class MenuButonModel(
     val baslik: String,
@@ -34,13 +33,12 @@ data class MenuButonModel(
     val tiklamaAksiyonu: () -> Unit
 )
 
-// 🎨 Uygulama teması: BizimHesap tarzı gradyan (turkuaz -> lacivert)
 private val ArkaPlanGradyan = Brush.verticalGradient(
     colors = listOf(
-        Color(0xFF13B0A5), // üstte turkuaz
+        Color(0xFF13B0A5),
         Color(0xFF0E7C8C),
         Color(0xFF14406B),
-        Color(0xFF0B1F3A)  // altta koyu lacivert
+        Color(0xFF0B1F3A)
     )
 )
 
@@ -49,8 +47,10 @@ private val BeyazCizgi = Color.White.copy(alpha = 0.22f)
 
 @Composable
 fun AnaMenuScreen(
-    database: AppDatabase,
-    platformDbManager: PlatformDatabaseManager, // 🎯 KMP platform yöneticisi
+    apiService: ApiService,
+    kullaniciAdi: String = "Kullanıcı",
+    kullaniciEmail: String = "",
+    onCikisYap: () -> Unit = {},
     onNavigateToUrunler: () -> Unit,
     onNavigateToMusteriler: () -> Unit,
     onNavigateToTedarikciler: () -> Unit,
@@ -59,15 +59,16 @@ fun AnaMenuScreen(
     onNavigateToMasraf: () -> Unit,
     onNavigateToRaporlama: () -> Unit,
     onNavigateToStok: () -> Unit,
-    onYedekYukleIstegi: () -> Unit, // 🎯 UI dışından (FilePicker tetiklemek için) lambda fonksiyonu
+    onNavigateToBilgiler: () -> Unit,
     guncelTarih: String
 ) {
-    val urunler = remember(database) {
-        database.appDatabaseQueries
-            .selectAllUrun()
-            .executeAsList()
+    var urunler by remember { mutableStateOf<List<Urun>>(emptyList()) }
+    
+    LaunchedEffect(Unit) {
+        try {
+            urunler = apiService.getUrunler()
+        } catch (e: Exception) { e.printStackTrace() }
     }
-    val dosyaPaylasici = rememberDosyaPaylasici()
 
     val tumKritikUrunler = urunler.filter { it.stokAdedi <= 5L }
     val kritikStoklarGosterim = tumKritikUrunler.sortedBy { it.stokAdedi }.take(5)
@@ -75,7 +76,7 @@ fun AnaMenuScreen(
     var uyarıMesaji by remember { mutableStateOf("") }
     var diyalogAcikMi by remember { mutableStateOf(false) }
 
-    // 🎯 BizimHesap tarzı: tek renkli ikonlar, arka plan gradyan üstünde beyaz daireler
+    // 🎯 9 Butonlu (3x3 tam simetrik) Izgara Menüsü
     val menuButonlari = listOf(
         MenuButonModel("Müşteriler", Icons.Default.Groups, onNavigateToMusteriler),
         MenuButonModel("Tedarikçiler", Icons.Default.LocalShipping, onNavigateToTedarikciler),
@@ -84,7 +85,8 @@ fun AnaMenuScreen(
         MenuButonModel("Alışlar", Icons.Default.Balance, onNavigateToAlis),
         MenuButonModel("Masraflar", Icons.Default.AttachMoney, onNavigateToMasraf),
         MenuButonModel("Stoklar", Icons.Default.Storage, onNavigateToStok),
-        MenuButonModel("Raporlar", Icons.Default.BarChart, onNavigateToRaporlama)
+        MenuButonModel("Raporlar", Icons.Default.BarChart, onNavigateToRaporlama),
+        MenuButonModel("Bilgiler", Icons.Default.ManageAccounts, onNavigateToBilgiler)
     )
 
     Box(
@@ -97,38 +99,60 @@ fun AnaMenuScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            // ÜST BAŞLIK
-            Column(
+            // ÜST BAŞLIK (İsim ve Hızlı Çıkış/Profil Alanı)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Hoş geldiniz",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Muhasebe",
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                Column {
+                    Text(
+                        text = "Hoş geldiniz,",
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = kullaniciAdi.ifBlank { "İşletme Hesabı" },
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // Profil Avatarı / Hızlı Çıkış Butonu
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(BeyazYariSeffaf)
+                        .clickable { onNavigateToBilgiler() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Profil",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
             TarihBari(tarih = guncelTarih)
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 1. BÖLÜM: HIZLI İŞLEMLER — daire ikonlu grid (BizimHesap tarzı)
+            // 1. BÖLÜM: 3x3 HIZLI İŞLEMLER GRID
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                userScrollEnabled = false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 500.dp)
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 items(menuButonlari) { buton ->
                     MenuButonItem(model = buton)
@@ -137,7 +161,7 @@ fun AnaMenuScreen(
 
             // 2. BÖLÜM: KRİTİK STOK UYARILARI
             if (tumKritikUrunler.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "KRİTİK STOK UYARILARI",
                     fontSize = 12.sp,
@@ -183,81 +207,22 @@ fun AnaMenuScreen(
                                 )
                             }
                             if (index < kritikStoklarGosterim.lastIndex) {
-                                HorizontalDivider(color = BeyazCizgi, thickness = 1.dp, modifier = Modifier.padding(start = 40.dp))
+                                HorizontalDivider(
+                                    color = BeyazCizgi,
+                                    thickness = 1.dp,
+                                    modifier = Modifier.padding(start = 40.dp)
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // 3. BÖLÜM: VERİ GÜVENLİĞİ VE YEDEKLEME
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                text = "VERİ GÜVENLİĞİ VE BULUT YEDEK",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White.copy(alpha = 0.75f),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = BeyazYariSeffaf),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(84.dp)
-                        .clickable {
-                            val dbBytes = platformDbManager.getDatabaseBytes(database)
-                            if (dbBytes != null) {
-                                dosyaPaylasici.paylasBytes("muhasebe_yedek.db", dbBytes)
-                            } else {
-                                uyarıMesaji = "Yedek dosyası okunurken hata oluştu!"
-                                diyalogAcikMi = true
-                            }
-                        }
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(14.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = "İndir", tint = Color.White, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("DB Yedek İndir", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                    }
-                }
-
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = BeyazYariSeffaf),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(84.dp)
-                        .clickable { onYedekYukleIstegi() }
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(14.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = "Yükle", tint = Color.White, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("DB Yedek Yükle", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(36.dp))
         }
     }
 
-    // Bildirim Penceresi
+    // Genel Sistem Uyarısı Penceresi
     if (diyalogAcikMi) {
         AlertDialog(
             onDismissRequest = { diyalogAcikMi = false },
@@ -281,25 +246,34 @@ fun TarihBari(tarih: String) {
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(14.dp))
+        Icon(
+            Icons.Default.CalendarToday,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.size(14.dp)
+        )
         Spacer(modifier = Modifier.width(6.dp))
-        Text(text = tarih, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.75f))
+        Text(
+            text = tarih,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.75f)
+        )
     }
 }
 
-// 🎯 BizimHesap tarzı: dairesel ikon + altında etiket
 @Composable
 fun MenuButonItem(model: MenuButonModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { model.tiklamaAksiyonu() }
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(58.dp)
+                .size(76.dp)
                 .clip(CircleShape)
                 .background(BeyazYariSeffaf),
             contentAlignment = Alignment.Center
@@ -308,14 +282,14 @@ fun MenuButonItem(model: MenuButonModel) {
                 imageVector = model.ikon,
                 contentDescription = model.baslik,
                 tint = Color.White,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(34.dp)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = model.baslik,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
             color = Color.White,
             textAlign = TextAlign.Center,
             maxLines = 2

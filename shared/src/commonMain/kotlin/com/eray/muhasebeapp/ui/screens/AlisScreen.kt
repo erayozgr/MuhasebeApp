@@ -20,18 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.Tedarikci
-import com.eray.muhasebeapp.database.UrunEntity
-import com.eray.muhasebeapp.database.Alis
-import com.eray.muhasebeapp.database.AlisKalemi
-import com.eray.muhasebeapp.getEpochMillis
-import com.eray.muhasebeapp.formatTarih
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.eray.muhasebeapp.*
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
+import kotlinx.coroutines.launch
 
 data class AlisSepetKalemi(
-    val urun: UrunEntity,
+    val urun: Urun,
     val adet: Int,
     val alisFiyati: Double
 ) {
@@ -46,11 +41,12 @@ data class GecmisAlisKaydi(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlisScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
-    val urunler = remember { database.appDatabaseQueries.selectAllUrun().executeAsList() }
-    val tedarikciler = remember { database.appDatabaseQueries.selectAllTedarikci().executeAsList() }
+    var urunler by remember { mutableStateOf<List<Urun>>(emptyList()) }
+    var tedarikciler by remember { mutableStateOf<List<Tedarikci>>(emptyList()) }
+    val scope = rememberCoroutineScope()
 
     var sepet by remember { mutableStateOf(listOf<AlisSepetKalemi>()) }
     var seciliTedarikci by remember { mutableStateOf<Tedarikci?>(null) }
@@ -63,28 +59,31 @@ fun AlisScreen(
 
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
 
-    var gecmisTumAlislarHam by remember { mutableStateOf<List<Alis>?>(null) }
-    var gecmisLimit by remember { mutableStateOf(20) }
     var gecmisAlislar by remember { mutableStateOf(listOf<GecmisAlisKaydi>()) }
     var gecmisYukleniyor by remember { mutableStateOf(false) }
-    var gecmisDahaFazlaVar by remember { mutableStateOf(true) }
+    var loadingInitialData by remember { mutableStateOf(true) }
 
-    LaunchedEffect(sepet.isEmpty(), gecmisLimit) {
+    LaunchedEffect(Unit) {
+        loadingInitialData = true
+        try {
+            urunler = apiService.getUrunler()
+            tedarikciler = apiService.getTedarikciler()
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingInitialData = false }
+    }
+
+    LaunchedEffect(sepet.isEmpty()) {
         if (sepet.isEmpty()) {
             gecmisYukleniyor = true
-            withContext(Dispatchers.Default) {
-                if (gecmisTumAlislarHam == null) {
-                    gecmisTumAlislarHam = database.appDatabaseQueries.selectAllAlis().executeAsList()
-                }
-                val ham = gecmisTumAlislarHam ?: emptyList()
-                val limitli = ham.take(gecmisLimit)
-                gecmisDahaFazlaVar = ham.size > gecmisLimit
-                gecmisAlislar = limitli.map { a ->
-                    val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(a.id).executeAsList()
+            try {
+                val list = apiService.getAlislar().take(20)
+                val mapped = list.map { a ->
+                    val kalemler = try { apiService.getAlisKalemler(a.id ?: 0L) } catch (e: Exception) { emptyList() }
                     GecmisAlisKaydi(a, kalemler)
                 }
-            }
-            gecmisYukleniyor = false
+                gecmisAlislar = mapped
+            } catch (e: Exception) { e.printStackTrace() }
+            finally { gecmisYukleniyor = false }
         }
     }
 
@@ -127,6 +126,9 @@ fun AlisScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (loadingInitialData) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -182,7 +184,7 @@ fun AlisScreen(
 
             if (sepet.isEmpty()) {
                 Text(
-                    text = "GEÇMİŞ ALIŞLAR",
+                    text = "SON ALIŞLAR",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF8E8E93),
@@ -208,26 +210,6 @@ fun AlisScreen(
                     ) {
                         items(gecmisAlislar) { kayit ->
                             GecmisAlisKart(kayit)
-                        }
-                        if (gecmisDahaFazlaVar) {
-                            item {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    TextButton(
-                                        onClick = { gecmisLimit += 20 },
-                                        enabled = !gecmisYukleniyor,
-                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF5856D6))
-                                    ) {
-                                        Text(
-                                            if (gecmisYukleniyor) "Yükleniyor..." else "Daha Fazla Yükle (+20)",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                }
-                            }
                         }
                         item { Spacer(modifier = Modifier.height(96.dp)) }
                     }
@@ -278,16 +260,23 @@ fun AlisScreen(
                     Button(
                         onClick = {
                             if (sepet.isNotEmpty()) {
-                                alisiTamamla(
-                                    database = database,
-                                    sepet = sepet,
-                                    tedarikci = seciliTedarikci
-                                )
-                                sepet = listOf()
-                                seciliTedarikci = null
-                                basariliMesajGoster = true
-                                gecmisTumAlislarHam = null
-                                gecmisLimit = 20
+                                scope.launch {
+                                    try {
+                                        val result = apiService.createAlis(
+                                            AlisKayitRequest(
+                                                tedarikciId = seciliTedarikci?.id,
+                                                kalemler = sepet.map { AlisKalemiRequest(it.urun.id ?: 0L, it.adet.toLong(), it.alisFiyati) }
+                                            )
+                                        )
+                                        if (result.isSuccess) {
+                                            sepet = listOf()
+                                            seciliTedarikci = null
+                                            basariliMesajGoster = true
+                                        } else {
+                                            println("Alis HATA: ${result.exceptionOrNull()?.message}")
+                                        }
+                                    } catch (e: Exception) { e.printStackTrace() }
+                                }
                             }
                         },
                         enabled = sepet.isNotEmpty(),
@@ -337,42 +326,6 @@ fun AlisScreen(
                 }
             }
         )
-    }
-}
-
-private fun alisiTamamla(
-    database: AppDatabase,
-    sepet: List<AlisSepetKalemi>,
-    tedarikci: Tedarikci?
-) {
-    val toplamTutar = sepet.sumOf { it.toplam }
-    val queries = database.appDatabaseQueries
-
-    queries.transaction {
-        queries.insertAlis(
-            tedarikci?.id,
-            tedarikci?.ad ?: "Peşin Tedarikçi",
-            tarih = getEpochMillis().toString(),
-            toplamTutar
-        )
-        val alisId = queries.lastInsertIdAlis().executeAsOne()
-
-        sepet.forEach { kalem ->
-            queries.insertAlisKalemi(
-                alisId,
-                kalem.urun.id,
-                kalem.urun.ad,
-                kalem.adet.toLong(),
-                kalem.alisFiyati,
-                kalem.toplam
-            )
-            val yeniStok = kalem.urun.stokAdedi + kalem.adet
-            queries.updateUrunStok(yeniStok, kalem.urun.id)
-        }
-
-        if (tedarikci != null) {
-            queries.updateTedarikciBakiye(tedarikci.bakiye + toplamTutar, tedarikci.id)
-        }
     }
 }
 
@@ -428,7 +381,7 @@ private fun GecmisAlisKart(kayit: GecmisAlisKaydi) {
                 Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = Color(0xFFFF9500))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(kayit.alis.tedarikciAdi, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                Text(kayit.alis.tedarikciAdi ?: "Bilinmeyen Tedarikçi", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
                 if (urunListesi.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(urunListesi, fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 16.sp)
@@ -450,11 +403,11 @@ private fun GecmisAlisKart(kayit: GecmisAlisKaydi) {
 
 @Composable
 private fun AlisUrunSecDialog(
-    urunler: List<UrunEntity>,
+    urunler: List<Urun>,
     onDismiss: () -> Unit,
-    onEkle: (UrunEntity, Int, Double) -> Unit
+    onEkle: (Urun, Int, Double) -> Unit
 ) {
-    var seciliUrun by remember { mutableStateOf<UrunEntity?>(null) }
+    var seciliUrun by remember { mutableStateOf<Urun?>(null) }
     var adetText by remember { mutableStateOf("") }
     var fiyatText by remember { mutableStateOf("") }
     var dropdownAcikMi by remember { mutableStateOf(false) }
@@ -504,7 +457,7 @@ private fun AlisUrunSecDialog(
                         Text(text = seciliUrun?.let { "Öneri: ₺${formatAlisFiyatiIkiBasamak(it.alisFiyati)}" } ?: "0.00")
                     },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), // 🎯 Güncellendi
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
 

@@ -24,12 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.Masraf
-import com.eray.muhasebeapp.getEpochMillis
+import com.eray.muhasebeapp.data.model.Masraf
+import com.eray.muhasebeapp.data.network.ApiService
 import com.eray.muhasebeapp.formatTarih
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 val masrafKategorileri = listOf(
     "Kira" to Icons.Default.Home,
@@ -61,8 +59,7 @@ private fun ayBasligiUret(tarihMillisStr: String): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MasrafScreen(
-    database: AppDatabase,
-    simdiMillis: Long,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
     var yukleniyor by remember { mutableStateOf(true) }
@@ -70,7 +67,6 @@ fun MasrafScreen(
     var gruplanmisMasraflar by remember { mutableStateOf<Map<String, List<Masraf>>>(emptyMap()) }
 
     var seciliFiltre by remember { mutableStateOf("Tümü") }
-    var seciliDonem by remember { mutableStateOf(RaporDonemi.BU_AY) }
     var mevcutLimit by remember { mutableStateOf(30) }
     var yenilemeTetikleyici by remember { mutableStateOf(0) }
 
@@ -78,31 +74,27 @@ fun MasrafScreen(
     var islemSayisi by remember { mutableStateOf(0) }
 
     var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(seciliDonem, seciliFiltre, mevcutLimit, yenilemeTetikleyici) {
+    LaunchedEffect(seciliFiltre, mevcutLimit, yenilemeTetikleyici) {
         yukleniyor = true
-        withContext(Dispatchers.Default) {
-            try {
-                val donemBaslangic = donemBaslangicMillis(seciliDonem, simdiMillis)
-                val hamMasraflar = database.appDatabaseQueries.selectAllMasraf().executeAsList()
+        try {
+            val hamMasraflar = apiService.getMasraflar()
 
-                val masraflarFiltreli = hamMasraflar.filter { m ->
-                    val kategoriUyar = seciliFiltre == "Tümü" || m.kategori == seciliFiltre
-                    val donemUyar = donemBaslangic == null || (m.tarih.toLongOrNull() ?: 0L) >= donemBaslangic
-                    kategoriUyar && donemUyar
-                }.sortedByDescending { it.tarih.toLongOrNull() ?: 0L }
+            val masraflarFiltreli = hamMasraflar.filter { m ->
+                seciliFiltre == "Tümü" || m.kategori == seciliFiltre
+            }.sortedByDescending { it.tarih.toLongOrNull() ?: 0L }
 
-                toplamMasraf = masraflarFiltreli.sumOf { it.tutar }
-                islemSayisi = masraflarFiltreli.size
+            toplamMasraf = masraflarFiltreli.sumOf { it.tutar }
+            islemSayisi = masraflarFiltreli.size
 
-                val limitliMasraflar = masraflarFiltreli.take(mevcutLimit)
-                gruplanmisMasraflar = limitliMasraflar.groupBy { ayBasligiUret(it.tarih) }
+            val limitliMasraflar = masraflarFiltreli.take(mevcutLimit)
+            gruplanmisMasraflar = limitliMasraflar.groupBy { ayBasligiUret(it.tarih) }
 
-            } catch (e: Throwable) {
-                hataMesaji = "MASRAF VERİSİ İŞLENİRKEN HATA OLUŞTU:\n${e::class.simpleName}: ${e.message}\n${e.stackTraceToString().take(1000)}"
-            } finally {
-                yukleniyor = false
-            }
+        } catch (e: Throwable) {
+            hataMesaji = "MASRAF VERİSİ İŞLENİRKEN HATA OLUŞTU:\n${e::class.simpleName}: ${e.message}"
+        } finally {
+            yukleniyor = false
         }
     }
 
@@ -112,14 +104,8 @@ fun MasrafScreen(
                 Text("Bir hata oluştu, lütfen bu metni kopyala:", fontWeight = FontWeight.Bold, color = Color.Red)
                 Spacer(modifier = Modifier.height(8.dp))
                 SelectionContainer { Text(hataMesaji ?: "", fontSize = 12.sp) }
+                Button(onClick = { hataMesaji = null; yenilemeTetikleyici++ }) { Text("Tekrar Dene") }
             }
-        }
-        return
-    }
-
-    if (yukleniyor && gruplanmisMasraflar.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color(0xFFFF3B30))
         }
         return
     }
@@ -166,32 +152,12 @@ fun MasrafScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                RaporDonemi.entries.forEach { donem ->
-                    FilterChip(
-                        selected = seciliDonem == donem,
-                        onClick = {
-                            seciliDonem = donem
-                            mevcutLimit = 30
-                        },
-                        label = { Text(donem.etiket, fontSize = 13.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFFF3B30),
-                            selectedLabelColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                }
+            if (yukleniyor && gruplanmisMasraflar.isEmpty()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFFFF3B30))
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 MasrafOzetKart("Toplam", "₺${formatMasrafIkiBasamak(toplamMasraf)}", Color(0xFFFF3B30), Modifier.weight(1f))
@@ -224,9 +190,9 @@ fun MasrafScreen(
                 }
             }
 
-            if (gruplanmisMasraflar.isEmpty()) {
+            if (gruplanmisMasraflar.isEmpty() && !yukleniyor) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(if(yukleniyor) "Yükleniyor..." else "Bu dönemde masraf yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
+                    Text("Bu dönemde masraf yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
                 }
             } else {
                 LazyColumn(
@@ -244,7 +210,7 @@ fun MasrafScreen(
                                 modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                             )
                         }
-                        items(masraflarListesi, key = { it.id }) { masraf ->
+                        items(masraflarListesi, key = { it.id ?: 0L }) { masraf ->
                             MasrafKart(
                                 masraf = masraf,
                                 onSil = { silinecekMasraf = masraf }
@@ -278,13 +244,19 @@ fun MasrafScreen(
         MasrafEkleDialog(
             onDismiss = { dialogAcikMi = false },
             onKaydet = { kategori, aciklama, tutar ->
-                database.appDatabaseQueries.insertMasraf(
-                    kategori,
-                    aciklama,
-                    tutar,
-                    getEpochMillis().toString()
-                )
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.createMasraf(
+                            Masraf(
+                                kategori = kategori,
+                                aciklama = aciklama,
+                                tutar = tutar,
+                                tarih = com.eray.muhasebeapp.getEpochMillis().toString()
+                            )
+                        )
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 dialogAcikMi = false
             }
         )
@@ -299,8 +271,12 @@ fun MasrafScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        database.appDatabaseQueries.deleteMasraf(masraf.id)
-                        yenilemeTetikleyici++
+                        scope.launch {
+                            try {
+                                apiService.deleteMasraf(masraf.id ?: 0L)
+                                yenilemeTetikleyici++
+                            } catch (e: Exception) { e.printStackTrace() }
+                        }
                         silinecekMasraf = null
                     }
                 ) {

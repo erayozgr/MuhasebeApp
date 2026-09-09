@@ -23,14 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.eray.muhasebeapp.database.shared.AppDatabase
-import com.eray.muhasebeapp.database.Tedarikci
-import com.eray.muhasebeapp.database.Alis
-import com.eray.muhasebeapp.database.AlisKalemi
-import com.eray.muhasebeapp.rememberUrlAcici
-import com.eray.muhasebeapp.telefonLinkOlustur
-import com.eray.muhasebeapp.whatsappLinkOlustur
-import com.eray.muhasebeapp.formatTarih
+import com.eray.muhasebeapp.data.model.*
+import com.eray.muhasebeapp.data.network.ApiService
+import com.eray.muhasebeapp.*
+import kotlinx.coroutines.launch
 
 private fun tedarikciBakiyeMetniVeRengi(bakiye: Double): Pair<String, Color> {
     val formatliBakiye = formatTedarikciCariIkiBasamak(bakiye)
@@ -44,12 +40,23 @@ private fun tedarikciBakiyeMetniVeRengi(bakiye: Double): Pair<String, Color> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TedarikcilerScreen(
-    database: AppDatabase,
+    apiService: ApiService,
     onNavigateBack: () -> Unit
 ) {
     var yenilemeTetikleyici by remember { mutableStateOf(0) }
-    val tedarikciler = remember(yenilemeTetikleyici) {
-        database.appDatabaseQueries.selectAllTedarikci().executeAsList()
+    var tedarikciler by remember { mutableStateOf<List<Tedarikci>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(yenilemeTetikleyici) {
+        loading = true
+        try {
+            tedarikciler = apiService.getTedarikciler()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            loading = false
+        }
     }
 
     var dialogAcikMi by remember { mutableStateOf(false) }
@@ -101,6 +108,9 @@ fun TedarikcilerScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (loading && tedarikciler.isEmpty()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -159,7 +169,7 @@ fun TedarikcilerScreen(
                 }
             }
 
-            if (tedarikciler.isEmpty()) {
+            if (tedarikciler.isEmpty() && !loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Henüz tedarikçi eklenmedi", color = Color(0xFF8E8E93), fontSize = 15.sp)
                 }
@@ -182,19 +192,39 @@ fun TedarikcilerScreen(
     }
 
     if (dialogAcikMi) {
+        var isSaving by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+
         TedarikciEkleDialog(
-            onDismiss = { dialogAcikMi = false },
+            isSaving = isSaving,
+            errorMessage = errorMessage,
+            onDismiss = { if (!isSaving) dialogAcikMi = false },
             onKaydet = { ad, telefon, adres, bakiye ->
-                database.appDatabaseQueries.insertTedarikci(ad, telefon, adres, bakiye)
-                yenilemeTetikleyici++
-                dialogAcikMi = false
+                scope.launch {
+                    isSaving = true
+                    errorMessage = null
+                    try {
+                        val result = apiService.createTedarikci(Tedarikci(ad = ad, telefon = telefon, adres = adres, bakiye = bakiye))
+                        if (result.isSuccess) {
+                            yenilemeTetikleyici++
+                            dialogAcikMi = false
+                        } else {
+                            errorMessage = result.exceptionOrNull()?.message ?: "Bilinmeyen sunucu hatası"
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "Bağlantı hatası: ${e.message}"
+                        e.printStackTrace()
+                    } finally {
+                        isSaving = false
+                    }
+                }
             }
         )
     }
 
     detayGosterilenTedarikci?.let { tedarikci ->
         TedarikciDetayDialog(
-            database = database,
+            apiService = apiService,
             tedarikci = tedarikci,
             onDismiss = { detayGosterilenTedarikci = null },
             onDuzenle = {
@@ -221,8 +251,12 @@ fun TedarikcilerScreen(
             tedarikci = tedarikci,
             onDismiss = { duzenlenenTedarikci = null },
             onKaydet = { ad, telefon, adres ->
-                database.appDatabaseQueries.updateTedarikci(ad, telefon, adres, tedarikci.id)
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.updateTedarikci(tedarikci.id ?: 0L, tedarikci.copy(ad = ad, telefon = telefon, adres = adres))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 duzenlenenTedarikci = null
             }
         )
@@ -233,8 +267,12 @@ fun TedarikcilerScreen(
             tedarikci = tedarikci,
             onDismiss = { bakiyeDuzenlenenTedarikci = null },
             onKaydet = { yeniBakiye ->
-                database.appDatabaseQueries.updateTedarikciBakiye(yeniBakiye, tedarikci.id)
-                yenilemeTetikleyici++
+                scope.launch {
+                    try {
+                        apiService.updateTedarikci(tedarikci.id ?: 0L, tedarikci.copy(bakiye = yeniBakiye))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
                 bakiyeDuzenlenenTedarikci = null
             }
         )
@@ -245,17 +283,12 @@ fun TedarikcilerScreen(
             tedarikci = tedarikci,
             onDismiss = { odemeTedarikci = null },
             onKaydet = { odemeTutari ->
-                // 🎯 ÖDEME YAPILDIĞINDA RAPORLAMAYA DÜŞMESİ İÇİN KRONOLOJİK LOGLAMA YAPILIYOR
-                database.appDatabaseQueries.transaction {
-                    database.appDatabaseQueries.updateTedarikciBakiye(tedarikci.bakiye - odemeTutari, tedarikci.id)
-                    database.appDatabaseQueries.insertTedarikciOdemesi(
-                        tedarikciId = tedarikci.id,
-                        tedarikciAdi = tedarikci.ad,
-                        tutar = odemeTutari,
-                        tarih = com.eray.muhasebeapp.getEpochMillis().toString()
-                    )
+                scope.launch {
+                    try {
+                        apiService.createTedarikciOdemesi(TedarikciOdemeRequest(tedarikciId = tedarikci.id ?: 0L, tutar = odemeTutari))
+                        yenilemeTetikleyici++
+                    } catch (e: Exception) { e.printStackTrace() }
                 }
-                yenilemeTetikleyici++
                 odemeTedarikci = null
             }
         )
@@ -263,7 +296,7 @@ fun TedarikcilerScreen(
 
     raporTedarikci?.let { tedarikci ->
         TarihAralikliAlisRaporDialog(
-            database = database,
+            apiService = apiService,
             tedarikci = tedarikci,
             onDismiss = { raporTedarikci = null }
         )
@@ -271,7 +304,7 @@ fun TedarikcilerScreen(
 
     if (genelTedarikciDialogAcikMi) {
         GenelTedarikciAlisDialog(
-            database = database,
+            apiService = apiService,
             onDismiss = { genelTedarikciDialogAcikMi = false }
         )
     }
@@ -284,8 +317,12 @@ fun TedarikcilerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        database.appDatabaseQueries.deleteTedarikci(tedarikci.id)
-                        yenilemeTetikleyici++
+                        scope.launch {
+                            try {
+                                apiService.deleteTedarikci(tedarikci.id ?: 0L)
+                                yenilemeTetikleyici++
+                            } catch (e: Exception) { e.printStackTrace() }
+                        }
                         silinecekTedarikci = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
@@ -348,7 +385,7 @@ fun TedarikciKart(tedarikci: Tedarikci, onTikla: () -> Unit, onSil: () -> Unit) 
 
 @Composable
 fun TedarikciDetayDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     tedarikci: Tedarikci,
     onDismiss: () -> Unit,
     onDuzenle: () -> Unit,
@@ -359,14 +396,20 @@ fun TedarikciDetayDialog(
     val urlAcici = rememberUrlAcici()
     val (bakiyeFormatli, renk) = tedarikciBakiyeMetniVeRengi(tedarikci.bakiye)
 
-    val gecmisAlislar = remember(tedarikci.id) {
-        database.appDatabaseQueries.selectAlisByTedarikciId(tedarikci.id).executeAsList().take(6)
-    }
+    var gecmisAlislar by remember { mutableStateOf<List<Alis>>(emptyList()) }
+    var alisKalemleri by remember { mutableStateOf<Map<Long, List<AlisKalemi>>>(emptyMap()) }
+    val scope = rememberCoroutineScope()
 
-    val alisKalemleri = remember(gecmisAlislar) {
-        gecmisAlislar.associate { alis ->
-            alis.id to database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList()
-        }
+    LaunchedEffect(tedarikci.id) {
+        try {
+            val tumAlislar = apiService.getAlislar().filter { it.tedarikciId == tedarikci.id }
+            gecmisAlislar = tumAlislar.take(6)
+            val kalemMap = mutableMapOf<Long, List<AlisKalemi>>()
+            gecmisAlislar.forEach { a ->
+                kalemMap[a.id ?: 0L] = apiService.getAlisKalemler(a.id ?: 0L)
+            }
+            alisKalemleri = kalemMap
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     AlertDialog(
@@ -516,7 +559,7 @@ fun TedarikciOdemeGirDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TarihAralikliAlisRaporDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     tedarikci: Tedarikci,
     onDismiss: () -> Unit
 ) {
@@ -526,13 +569,19 @@ fun TarihAralikliAlisRaporDialog(
     val baslangicTarihState = rememberDatePickerState()
     val bitisTarihState = rememberDatePickerState()
 
-    val tumAlislar = remember(tedarikci.id) {
-        database.appDatabaseQueries.selectAlisByTedarikciId(tedarikci.id).executeAsList()
+    var tumAlislar by remember { mutableStateOf<List<Alis>>(emptyList()) }
+    var loadingAlislar by remember { mutableStateOf(true) }
+
+    LaunchedEffect(tedarikci.id) {
+        try {
+            tumAlislar = apiService.getAlislar().filter { it.tedarikciId == tedarikci.id }
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingAlislar = false }
     }
 
     val filtrelenmisAlislar = remember(tumAlislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
         tumAlislar.filter { alis ->
-            val alisZamani = alis.tarih.toLongOrNull() ?: 0L
+            val alisZamani = parseTarihMillis(alis.tarih)
             val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { alisZamani >= it } ?: true
             val bitisKosulu = bitisTarihState.selectedDateMillis?.let { alisZamani <= (it + 86400000L) } ?: true
             baslangicKosulu && bitisKosulu
@@ -544,9 +593,7 @@ fun TarihAralikliAlisRaporDialog(
     }
 
     val toplamRaporTutari = remember(filtrelenmisAlislar) {
-        filtrelenmisAlislar.sumOf { alis ->
-            database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList().sumOf { it.toplam }
-        }
+        filtrelenmisAlislar.sumOf { it.toplamTutar }
     }
 
     AlertDialog(
@@ -594,7 +641,9 @@ fun TarihAralikliAlisRaporDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (gruplanmisAlislar.isEmpty()) {
+                if (loadingAlislar) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (gruplanmisAlislar.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text("Seçilen aralıkta alış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
                     }
@@ -614,8 +663,11 @@ fun TarihAralikliAlisRaporDialog(
                                 )
                             }
                             items(alislarListesi) { alis ->
-                                val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList()
-                                val alisSaati = formatTedarikciSaat(alis.tarih)
+                                var kalemler by remember { mutableStateOf<List<AlisKalemi>>(emptyList()) }
+                                LaunchedEffect(alis.id) {
+                                    try { kalemler = apiService.getAlisKalemler(alis.id ?: 0L) } catch (e: Exception) {}
+                                }
+                                val alisSaati = formatSaat(alis.tarih)
 
                                 Column(
                                     modifier = Modifier
@@ -699,7 +751,7 @@ fun TarihAralikliAlisRaporDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenelTedarikciAlisDialog(
-    database: AppDatabase,
+    apiService: ApiService,
     onDismiss: () -> Unit
 ) {
     var baslangicSeciciAcik by remember { mutableStateOf(false) }
@@ -708,13 +760,19 @@ fun GenelTedarikciAlisDialog(
     val baslangicTarihState = rememberDatePickerState()
     val bitisTarihState = rememberDatePickerState()
 
-    val tumAlislar = remember {
-        database.appDatabaseQueries.selectAlisByTedarikciIdNull().executeAsList()
+    var tumAlislar by remember { mutableStateOf<List<Alis>>(emptyList()) }
+    var loadingAlislar by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        try {
+            tumAlislar = apiService.getAlislar().filter { it.tedarikciId == null }
+        } catch (e: Exception) { e.printStackTrace() }
+        finally { loadingAlislar = false }
     }
 
     val filtrelenmisAlislar = remember(tumAlislar, baslangicTarihState.selectedDateMillis, bitisTarihState.selectedDateMillis) {
         tumAlislar.filter { alis ->
-            val alisZamani = alis.tarih.toLongOrNull() ?: 0L
+            val alisZamani = parseTarihMillis(alis.tarih)
             val baslangicKosulu = baslangicTarihState.selectedDateMillis?.let { alisZamani >= it } ?: true
             val bitisKosulu = bitisTarihState.selectedDateMillis?.let { alisZamani <= (it + 86400000L) } ?: true
             baslangicKosulu && bitisKosulu
@@ -726,9 +784,7 @@ fun GenelTedarikciAlisDialog(
     }
 
     val toplamRaporTutari = remember(filtrelenmisAlislar) {
-        filtrelenmisAlislar.sumOf { alis ->
-            database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList().sumOf { it.toplam }
-        }
+        filtrelenmisAlislar.sumOf { it.toplamTutar }
     }
 
     AlertDialog(
@@ -776,7 +832,9 @@ fun GenelTedarikciAlisDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (gruplanmisAlislar.isEmpty()) {
+                if (loadingAlislar) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (gruplanmisAlislar.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text("Seçilen aralıkta alış kaydı bulunamadı.", color = Color(0xFF8E8E93), fontSize = 13.sp)
                     }
@@ -796,8 +854,11 @@ fun GenelTedarikciAlisDialog(
                                 )
                             }
                             items(alislarListesi) { alis ->
-                                val kalemler = database.appDatabaseQueries.selectKalemlerByAlisId(alis.id).executeAsList()
-                                val alisSaati = formatTedarikciSaat(alis.tarih)
+                                var kalemler by remember { mutableStateOf<List<AlisKalemi>>(emptyList()) }
+                                LaunchedEffect(alis.id) {
+                                    try { kalemler = apiService.getAlisKalemler(alis.id ?: 0L) } catch (e: Exception) {}
+                                }
+                                val alisSaati = formatSaat(alis.tarih)
 
                                 Column(
                                     modifier = Modifier
@@ -956,6 +1017,8 @@ fun TedarikciIletisimButonu(
 
 @Composable
 fun TedarikciEkleDialog(
+    isSaving: Boolean = false,
+    errorMessage: String? = null,
     onDismiss: () -> Unit,
     onKaydet: (ad: String, telefon: String, adres: String, bakiye: Double) -> Unit
 ) {
@@ -970,36 +1033,49 @@ fun TedarikciEkleDialog(
         title = { Text("Yeni Tedarikçi Kaydı", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(value = ad, onValueChange = { ad = it }, label = { Text("Firma / Ad Soyad") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (errorMessage != null) {
+                    Text(errorMessage, color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedTextField(value = ad, onValueChange = { ad = it }, label = { Text("Firma / Ad Soyad") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !isSaving)
                 OutlinedTextField(
                     value = telefon,
                     onValueChange = { telefon = it },
                     label = { Text("Telefon (05XX XXX XX XX)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving
                 )
-                OutlinedTextField(value = adres, onValueChange = { adres = it }, label = { Text("Adres") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = adres, onValueChange = { adres = it }, label = { Text("Adres") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !isSaving)
                 OutlinedTextField(
                     value = bakiye,
                     onValueChange = { bakiye = it },
                     label = { Text("Mevcut Başlangıç Borcumuz (₺)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving
                 )
+
+                if (isSaving) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (ad.isNotBlank()) {
-                    val temizBakiyeText = bakiye.replace(',', '.')
-                    onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
+            TextButton(
+                enabled = !isSaving,
+                onClick = {
+                    if (ad.isNotBlank()) {
+                        val temizBakiyeText = bakiye.replace(',', '.')
+                        onKaydet(ad, telefon, adres, temizBakiyeText.toDoubleOrNull() ?: 0.0)
+                    }
                 }
-            }) { Text("Kaydet", color = Color(0xFF5856D6), fontWeight = FontWeight.SemiBold) }
+            ) { Text(if (isSaving) "Kaydediliyor..." else "Kaydet", color = Color(0xFF5856D6), fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("İptal", color = Color(0xFF8E8E93)) }
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("İptal", color = Color(0xFF8E8E93)) }
         }
     )
 }
@@ -1091,21 +1167,6 @@ fun TedarikciBakiyeDuzenleDialog(
             TextButton(onClick = onDismiss) { Text("İptal", color = Color(0xFF8E8E93)) }
         }
     )
-}
-
-private fun formatTedarikciSaat(epochMillisStr: String): String {
-    val millis = epochMillisStr.toLongOrNull() ?: return ""
-
-    val toplamSaniye = millis / 1000
-    val gunIciSaniye = toplamSaniye % 86400
-
-    val toplamSaatSaniye = gunIciSaniye + (3 * 3600)
-    val duzeltilmisSaniye = if (toplamSaatSaniye >= 86400) toplamSaatSaniye - 86400 else toplamSaatSaniye
-
-    val saat = (duzeltilmisSaniye / 3600).toString().padStart(2, '0')
-    val dakika = ((duzeltilmisSaniye % 3600) / 60).toString().padStart(2, '0')
-
-    return "$saat:$dakika"
 }
 
 private fun formatTedarikciCariIkiBasamak(deger: Double): String {

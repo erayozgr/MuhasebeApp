@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.composeCompiler)
 
     id("app.cash.sqldelight") version "2.0.2"
+
+    kotlin("plugin.serialization")
 }
 
 kotlin {
@@ -35,10 +37,6 @@ kotlin {
     }
 
     sourceSets {
-        androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation("app.cash.sqldelight:android-driver:2.0.2")
-        }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -50,23 +48,36 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
             implementation(libs.kotlinx.datetime)
-
-            // İKON HATALARINI ÇÖZEN SATIR (Bunu ekleyin):
             implementation(compose.materialIconsExtended)
 
             implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
 
-            // Canlı internet istekleri için Ktor Core
+            // Ktor Core ve JSON Eklentileri (Tüm platformlarda ortak olmalı)
             implementation("io.ktor:ktor-client-core:2.3.12")
+            implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
 
-            // JSON verilerini ayıklamak için Serialization kütüphanesi
+            // JSON Serileştirme
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
-            implementation("io.ktor:ktor-client-cio:2.3.12")
+            implementation("com.russhwolf:multiplatform-settings-no-arg:1.2.0")
         }
+
+        androidMain.dependencies {
+            implementation(libs.compose.uiToolingPreview)
+            implementation("app.cash.sqldelight:android-driver:2.0.2")
+
+            // OkHttp motoru SADECE Android altında tanımlanmalıdır
+            implementation("io.ktor:ktor-client-okhttp:2.3.12")
+        }
+
         iosMain.dependencies {
             implementation("app.cash.sqldelight:native-driver:2.0.2")
+
+            // iOS ağ motoru (Darwin)
+            implementation("io.ktor:ktor-client-darwin:2.3.12")
         }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
