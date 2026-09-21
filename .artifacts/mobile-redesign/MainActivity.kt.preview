@@ -1,0 +1,18 @@
+package com.eray.muhasebeapp
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.ui.Modifier
+import com.eray.muhasebeapp.data.network.ApiService
+import com.eray.muhasebeapp.ui.*
+import com.eray.muhasebeapp.ui.screens.*
+class MainActivity : ComponentActivity() {
+ override fun onCreate(savedInstanceState: Bundle?) {
+  super.onCreate(savedInstanceState)
+  enableEdgeToEdge()
+  val api = ApiService()
+  val screen = intent.getStringExtra("screen") ?: "Musteriler"
+  setContent { PreviewApp(screen) { finish() } }
+ }
+}

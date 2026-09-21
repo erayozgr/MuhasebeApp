@@ -1,0 +1,55 @@
+CREATE TABLE UrunEntity_decimal (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    barkod TEXT NOT NULL,
+    ad TEXT NOT NULL,
+    alisFiyati REAL NOT NULL,
+    satisFiyati REAL NOT NULL,
+    stokAdedi REAL NOT NULL,
+    birim TEXT NOT NULL,
+    kdvOrani INTEGER NOT NULL
+);
+INSERT INTO UrunEntity_decimal (id, barkod, ad, alisFiyati, satisFiyati, stokAdedi, birim, kdvOrani) SELECT id, barkod, ad, alisFiyati, satisFiyati, stokAdedi, birim, kdvOrani FROM UrunEntity;
+DROP TABLE UrunEntity;
+ALTER TABLE UrunEntity_decimal RENAME TO UrunEntity;
+
+CREATE TABLE SatisKalemi_decimal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    satisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet REAL NOT NULL,
+    birim TEXT NOT NULL DEFAULT 'adet',
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+INSERT INTO SatisKalemi_decimal (id, satisId, urunId, urunAdi, adet, birim, birimFiyat, toplam) SELECT id, satisId, urunId, urunAdi, adet, birim, birimFiyat, toplam FROM SatisKalemi;
+DROP TABLE SatisKalemi;
+ALTER TABLE SatisKalemi_decimal RENAME TO SatisKalemi;
+
+CREATE TABLE AlisKalemi_decimal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alisId INTEGER NOT NULL,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    adet REAL NOT NULL,
+    birimFiyat REAL NOT NULL,
+    toplam REAL NOT NULL
+);
+INSERT INTO AlisKalemi_decimal (id, alisId, urunId, urunAdi, adet, birimFiyat, toplam) SELECT id, alisId, urunId, urunAdi, adet, birimFiyat, toplam FROM AlisKalemi;
+DROP TABLE AlisKalemi;
+ALTER TABLE AlisKalemi_decimal RENAME TO AlisKalemi;
+
+CREATE TABLE StokHareketi_decimal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    urunId INTEGER NOT NULL,
+    urunAdi TEXT NOT NULL,
+    hareketTuru TEXT NOT NULL,
+    miktar REAL NOT NULL,
+    birimFiyat REAL NOT NULL DEFAULT 0.0,
+    aciklama TEXT NOT NULL,
+    tarih TEXT NOT NULL
+);
+INSERT INTO StokHareketi_decimal (id, urunId, urunAdi, hareketTuru, miktar, birimFiyat, aciklama, tarih) SELECT id, urunId, urunAdi, hareketTuru, miktar, birimFiyat, aciklama, tarih FROM StokHareketi;
+DROP TABLE StokHareketi;
+ALTER TABLE StokHareketi_decimal RENAME TO StokHareketi;
+

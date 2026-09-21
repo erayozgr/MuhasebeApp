@@ -1,0 +1,164 @@
+Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8 -Duser.language=en -Duser.country=US
+Reusing configuration cache.
+> Task :androidApp:preBuild UP-TO-DATE
+> Task :shared:androidPreBuild UP-TO-DATE
+> Task :androidApp:preDebugBuild UP-TO-DATE
+> Task :shared:convertXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :shared:kmpPartiallyResolvedDependenciesChecker
+> Task :androidApp:generateDebugResources UP-TO-DATE
+> Task :shared:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :shared:generateCommonMainAppDatabaseInterface UP-TO-DATE
+> Task :androidApp:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :shared:generateComposeResClass UP-TO-DATE
+> Task :shared:preAndroidMainBuild UP-TO-DATE
+> Task :shared:copyNonXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :androidApp:generateDebugAssets UP-TO-DATE
+> Task :shared:generateAndroidMainAssets UP-TO-DATE
+> Task :androidApp:javaPreCompileDebug UP-TO-DATE
+> Task :shared:generateExpectResourceCollectorsForCommonMain UP-TO-DATE
+> Task :shared:generateAndroidMainEmptyResourceFiles UP-TO-DATE
+> Task :androidApp:packageDebugResources UP-TO-DATE
+> Task :shared:copyNonXmlValueResourcesForCommonMain UP-TO-DATE
+> Task :shared:prepareComposeResourcesTaskForAndroidMain NO-SOURCE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shared:writeAndroidMainAarMetadata UP-TO-DATE
+> Task :shared:generateResourceAccessorsForAndroidMain NO-SOURCE
+> Task :androidApp:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :androidApp:desugarDebugFileDependencies UP-TO-DATE
+> Task :shared:prepareComposeResourcesTaskForCommonMain UP-TO-DATE
+> Task :shared:processAndroidMainManifest UP-TO-DATE
+> Task :androidApp:extractDeepLinksDebug UP-TO-DATE
+> Task :shared:generateResourceAccessorsForCommonMain UP-TO-DATE
+> Task :shared:copyAndroidMainComposeResourcesToAndroidAssets UP-TO-DATE
+> Task :androidApp:mergeDebugJniLibFolders UP-TO-DATE
+> Task :androidApp:processDebugNavigationResources UP-TO-DATE
+> Task :shared:generateActualResourceCollectorsForAndroidMain UP-TO-DATE
+> Task :shared:packageAndroidMainResources UP-TO-DATE
+> Task :androidApp:compileDebugNavigationResources UP-TO-DATE
+> Task :androidApp:parseDebugLocalResources UP-TO-DATE
+> Task :shared:parseAndroidMainLocalResources UP-TO-DATE
+> Task :androidApp:checkDebugDuplicateClasses UP-TO-DATE
+> Task :shared:generateAndroidMainRFile UP-TO-DATE
+> Task :androidApp:generateDebugRFile UP-TO-DATE
+> Task :shared:mergeAndroidMainJniLibFolders UP-TO-DATE
+> Task :androidApp:mapDebugSourceSetPaths UP-TO-DATE
+> Task :shared:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :androidApp:mergeDebugResources UP-TO-DATE
+> Task :shared:copyAndroidMainJniLibsProjectOnly UP-TO-DATE
+> Task :androidApp:validateSigningDebug UP-TO-DATE
+> Task :androidApp:writeDebugAppMetadata UP-TO-DATE
+> Task :shared:mergeAndroidMainAssets UP-TO-DATE
+> Task :shared:compileAndroidMainLibraryResources UP-TO-DATE
+> Task :androidApp:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :androidApp:mergeExtDexDebug UP-TO-DATE
+> Task :androidApp:mergeDebugNativeLibs UP-TO-DATE
+> Task :androidApp:checkDebugAarMetadata UP-TO-DATE
+> Task :androidApp:stripDebugDebugSymbols UP-TO-DATE
+> Task :androidApp:processDebugMainManifest UP-TO-DATE
+> Task :androidApp:processDebugManifest UP-TO-DATE
+> Task :androidApp:processDebugManifestForPackage UP-TO-DATE
+> Task :androidApp:mergeDebugAssets UP-TO-DATE
+> Task :androidApp:compressDebugAssets UP-TO-DATE
+> Task :androidApp:processDebugResources UP-TO-DATE
+
+> Task :shared:compileAndroidMain
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:8:57 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:11:55 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:14:33 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:14:53 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:17:39 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:17:71 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:17:102 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:20:35 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:20:57 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:23:32 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:23:51 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:39:108 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:42:105 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:45:99 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:48:36 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:48:57 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:52:74 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:52:118 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:55:85 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:55:132 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:59:55 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:60:53 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:61:51 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:62:55 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/IslemKaydi.kt:63:59 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:23:55 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:24:53 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:25:51 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:26:55 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:27:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:33:69 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:33:90 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:116:44 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:125:42 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:126:43 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:127:47 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:128:43 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:175:44 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:184:42 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:185:47 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:186:43 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:221:38 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:222:38 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:223:34 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:254:43 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:255:35 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:262:38 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:294:40 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:295:34 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:324:42 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/Xlsxraporu.kt:325:34 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/BilgilerScreen.kt:382:47 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/BilgilerScreen.kt:999:47 'val Icons.Filled.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Logout.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/BilgilerScreen.kt:1488:43 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/BilgilerScreen.kt:2225:43 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/GirisScreen.kt:1990:43 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/MasrafScreen.kt:351:47 'val Icons.Filled.ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ReceiptLong.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/MusterilerScreen.kt:1617:47 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/MusterilerScreen.kt:1932:25 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/MusterilerScreen.kt:2696:25 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/MusterilerScreen.kt:3392:37 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:146:67 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:147:65 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:148:63 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:149:67 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:150:61 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:709:39 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:710:36 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:725:41 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:725:84 'val Icons.Filled.TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.TrendingUp.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:734:40 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:739:42 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:740:34 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:746:41 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:747:31 Elvis operator (?:) always returns the left operand of non-nullable type 'Double'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:816:59 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:817:62 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:818:65 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/RaporlamaScreen.kt:819:67 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/Projeler/MuhasebeApp/shared/src/commonMain/kotlin/com/eray/muhasebeapp/ui/screens/TedarikcilerScreen.kt:434:50 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Chat.
+
+> Task :shared:bundleAndroidMainClassesToCompileJar
+> Task :shared:processAndroidMainJavaRes
+> Task :shared:bundleLibRuntimeToDirAndroidMain
+> Task :androidApp:compileDebugKotlin
+> Task :androidApp:processDebugJavaRes UP-TO-DATE
+> Task :androidApp:compileDebugJavaWithJavac NO-SOURCE
+> Task :androidApp:dexBuilderDebug
+> Task :androidApp:mergeProjectDexDebug
+> Task :androidApp:mergeLibDexDebug
+> Task :androidApp:mergeDebugJavaResource
+> Task :androidApp:packageDebug
+> Task :androidApp:assembleDebug
+> Task :androidApp:createDebugApkListingFileRedirect UP-TO-DATE
+
+[Incubating] Problems report is available at: file:///D:/Projeler/MuhasebeApp/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 45s
+58 actionable tasks: 11 executed, 47 up-to-date
+Configuration cache entry reused.

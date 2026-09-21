@@ -1,0 +1,28 @@
+package com.eray.muhasebeapp
+import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import com.eray.muhasebeapp.data.network.ApiService
+import com.eray.muhasebeapp.ui.*
+import com.eray.muhasebeapp.ui.screens.*
+@Composable
+fun PreviewApp(screen: String, finish: () -> Unit) {
+ val api = androidx.compose.runtime.remember { ApiService() }
+HesapBenimTheme {
+   Scaffold(containerColor = BrandColors.Background, contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+    Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding()) {
+     when(screen) {
+      "Musteriler" -> MusterilerScreen(api) { finish() }
+      "Tedarikciler" -> TedarikcilerScreen(api) { finish() }
+      "Urunler" -> UrunlerScreen(api) { finish() }
+      "Satis" -> SatisScreen(api) { finish() }
+      "Alis" -> AlisScreen(api) { finish() }
+      "Masraf" -> MasrafScreen(api) { finish() }
+      "Stok" -> StokScreen(api) { finish() }
+      "Raporlama" -> RaporlamaScreen(api) { finish() }
+     }
+    }
+   }
+  } 
+}
