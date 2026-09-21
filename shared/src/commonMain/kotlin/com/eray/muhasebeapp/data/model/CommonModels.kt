@@ -27,7 +27,7 @@ data class Urun(
     val ad: String,
     val alisFiyati: Double,
     val satisFiyati: Double,
-    val stokAdedi: Long,
+    val stokAdedi: Double,
     val birim: String,
     val kdvOrani: Int
 )
@@ -57,7 +57,7 @@ data class SatisKalemi(
     val satisId: Long?,
     val urunId: Long,
     val urunAdi: String,
-    val adet: Long,
+    val adet: Double,
     val birim: String,
     val birimFiyat: Double,
     val toplam: Double
@@ -79,7 +79,7 @@ data class AlisKalemi(
     val alisId: Long?,
     val urunId: Long,
     val urunAdi: String,
-    val adet: Long,
+    val adet: Double,
     val birim: String = "",
     val birimFiyat: Double,
     val toplam: Double
@@ -91,7 +91,7 @@ data class StokHareketi(
     val urunId: Long,
     val urunAdi: String,
     val hareketTuru: String,
-    val miktar: Long,
+    val miktar: Double,
     val birimFiyat: Double,
     val aciklama: String,
     val tarih: String
@@ -118,37 +118,41 @@ data class TedarikciOdemesi(
 @Serializable
 data class SatisKayitRequest(
     val musteriId: Long?,
-    val kalemler: List<SatisKalemiRequest>
+    val kalemler: List<SatisKalemiRequest>,
+    val tarih: String? = null
 )
 
 @Serializable
 data class SatisKalemiRequest(
     val urunId: Long,
-    val adet: Long,
+    val adet: Double,
     val birimFiyat: Double
 )
 
 @Serializable
 data class AlisKayitRequest(
     val tedarikciId: Long?,
-    val kalemler: List<AlisKalemiRequest>
+    val kalemler: List<AlisKalemiRequest>,
+    val tarih: String? = null
 )
 
 @Serializable
 data class AlisKalemiRequest(
     val urunId: Long,
-    val adet: Long,
+    val adet: Double,
     val birimFiyat: Double
 )
 
 @Serializable
 data class TahsilatRequest(
     val musteriId: Long,
-    val tutar: Double
+    val tutar: Double,
+    val tarih: String? = null
 )
 
 @Serializable
 data class TedarikciOdemeRequest(
     val tedarikciId: Long,
-    val tutar: Double
+    val tutar: Double,
+    val tarih: String? = null
 )

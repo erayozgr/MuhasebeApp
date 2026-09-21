@@ -1,29 +1,38 @@
 package com.eray.muhasebeapp.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import com.eray.muhasebeapp.ui.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.data.model.Urun
 import com.eray.muhasebeapp.data.network.ApiService
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,8 +47,6 @@ fun UrunlerScreen(
 
     var refreshTrigger by remember { mutableStateOf(0) }
     var kritikStokFiltresiAcik by remember { mutableStateOf(false) }
-    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
-
     val scope = rememberCoroutineScope()
     var urunListesi by remember { mutableStateOf<List<Urun>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -59,6 +66,7 @@ fun UrunlerScreen(
                 hamListe
             }
         } catch (e: Exception) {
+            println("Ürün Yükleme Hatası: ${e.message}")
             e.printStackTrace()
         } finally {
             loading = false
@@ -68,56 +76,18 @@ fun UrunlerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F2F7))
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { horizontalDragAccumulator = 0f },
-                    onDragEnd = {
-                        if (horizontalDragAccumulator > 150f) {
-                            onNavigateBack()
-                        }
-                    },
-                    onDragCancel = { horizontalDragAccumulator = 0f },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        horizontalDragAccumulator += dragAmount
-                    }
-                )
-            }
+            .background(BrandColors.Background)
+            .swipeToBack(onBack = onNavigateBack)
     ) {
 
         // --- Üst Bar ---
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center
+        BrandTopBar(
+            title = if (kritikStokFiltresiAcik) "Kritik stok" else "Ürünler",
+            subtitle = "Ürün kataloğu ve fiyat yönetimi",
+            onBack = onNavigateBack
         ) {
-            IconButton(
-                onClick = onNavigateBack,
-                modifier = Modifier.align(Alignment.CenterStart)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBackIos,
-                    contentDescription = "Geri",
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Text(
-                text = if (kritikStokFiltresiAcik) "Kritik Stok Listesi" else "Ürün Listesi",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (kritikStokFiltresiAcik) Color(0xFFFF3B30) else Color.Black
-            )
-
-            IconButton(
-                onClick = { urunEklemeDialogGoster = true },
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Ekle", tint = Color(0xFF007AFF))
+            IconButton(onClick = { urunEklemeDialogGoster = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Ürün Ekle", tint = Color.White)
             }
         }
 
@@ -138,20 +108,20 @@ fun UrunlerScreen(
             UrunOzetKart(
                 baslik = "Toplam Ürün",
                 deger = "${urunListesi.size}",
-                renk = Color(0xFF007AFF),
+                renk = BrandColors.Navy,
                 modifier = Modifier.weight(1f)
             )
             UrunOzetKart(
                 baslik = "Stok Değeri",
-                deger = "₺${toplamStokDeger.toUrunParaFormat()}",
-                renk = Color(0xFF34C759),
+                deger = "₺${formatKisaPara(toplamStokDeger)}",
+                renk = BrandColors.Success,
                 modifier = Modifier.weight(1f)
             )
             UrunOzetKart(
                 baslik = if (kritikStokFiltresiAcik) "Filtreyi Kaldır" else "Kritik Stok",
                 deger = "$kritikStokSayisi",
-                renk = if (kritikStokFiltresiAcik) Color.White else (if (kritikStokSayisi > 0) Color(0xFFFF3B30) else Color(0xFF8E8E93)),
-                containerColor = if (kritikStokFiltresiAcik) Color(0xFFFF3B30) else Color.White,
+                renk = if (kritikStokFiltresiAcik) Color.White else (if (kritikStokSayisi > 0) BrandColors.Danger else BrandColors.Muted),
+                containerColor = if (kritikStokFiltresiAcik) BrandColors.Danger else Color.White,
                 modifier = Modifier
                     .weight(1f)
                     .clickable { kritikStokFiltresiAcik = !kritikStokFiltresiAcik }
@@ -162,12 +132,12 @@ fun UrunlerScreen(
         TextField(
             value = aramaMetni,
             onValueChange = { aramaMetni = it },
-            placeholder = { Text("Ürün adı veya barkod ara...", color = Color(0xFF8E8E93), fontSize = 15.sp) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Ara", tint = Color(0xFF8E8E93)) },
+            placeholder = { Text("Ürün adı veya barkod ara...", color = BrandColors.Muted, fontSize = 15.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Ara", tint = BrandColors.Muted) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp),
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFFE3E3E8),
-                unfocusedContainerColor = Color(0xFFE3E3E8),
+                focusedContainerColor = BrandColors.Soft,
+                unfocusedContainerColor = BrandColors.Soft,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent
             ),
@@ -184,32 +154,27 @@ fun UrunlerScreen(
                         aramaMetni.isEmpty() -> "Ürün bulunamadı. Eklemek için + butonuna basın."
                         else -> "\"$aramaMetni\" için sonuç yok."
                     },
-                    color = Color(0xFF8E8E93),
-                    fontSize = 15.sp
+                    color = BrandColors.Muted,
+                    fontSize = 15.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
                 )
             }
         } else {
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                LazyColumn {
-                    itemsIndexed(urunListesi) { index, urun ->
-                        UrunSatiri(
-                            urun = urun,
-                            onDuzenle = { duzenlenecekUrun = urun },
-                            onSil = { silinecekUrun = urun }
-                        )
-                        if (index < urunListesi.lastIndex) {
-                            HorizontalDivider(
-                                color = Color(0xFFC6C6C8),
-                                thickness = 0.5.dp,
-                                modifier = Modifier.padding(start = 16.dp)
-                            )
-                        }
-                    }
+                itemsIndexed(
+                    items = urunListesi,
+                    key = { _, urun -> urun.id ?: urun.barkod.ifEmpty { urun.ad } }
+                ) { _, urun ->
+                    UrunSatiri(
+                        urun = urun,
+                        onDuzenle = { duzenlenecekUrun = urun },
+                        onSil = { silinecekUrun = urun }
+                    )
                 }
             }
         }
@@ -219,7 +184,7 @@ fun UrunlerScreen(
     if (urunEklemeDialogGoster) {
         var isSaving by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
-        
+
         UrunFormDialog(
             baslik = "Yeni Ürün Ekle",
             isSaving = isSaving,
@@ -244,10 +209,12 @@ fun UrunlerScreen(
                             refreshTrigger++
                             urunEklemeDialogGoster = false
                         } else {
-                            errorMessage = result.exceptionOrNull()?.message ?: "Bilinmeyen hata"
+                            println("Ürün Kayıt Hatası (Sunucu): ${result.exceptionOrNull()?.message}")
+                            errorMessage = "İşlem başarısız. Tekrar deneyin."
                         }
                     } catch (e: Exception) {
-                        errorMessage = "Bağlantı hatası: ${e.message}"
+                        println("Ürün Kayıt Hatası (Kritik): ${e.message}")
+                        errorMessage = "İşlem başarısız. Tekrar deneyin."
                         e.printStackTrace()
                     } finally {
                         isSaving = false
@@ -315,12 +282,12 @@ fun UrunlerScreen(
                         }
                         silinecekUrun = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Danger)
                 ) { Text("Sil", color = Color.White) }
             },
             dismissButton = {
                 TextButton(onClick = { silinecekUrun = null }) {
-                    Text("Vazgeç", color = Color(0xFF007AFF))
+                    Text("Vazgeç", color = BrandColors.Navy)
                 }
             },
             shape = RoundedCornerShape(16.dp),
@@ -342,7 +309,15 @@ private fun UrunFormDialog(
     mevcutStok: String = "",
     mevcutBirim: String = "Adet",
     mevcutKdv: String = "20",
-    onKaydet: (barkod: String, ad: String, alis: Double, satis: Double, stok: Long, birim: String, kdv: Long) -> Unit,
+    onKaydet: (
+        barkod: String,
+        ad: String,
+        alis: Double,
+        satis: Double,
+        stok: Double,
+        birim: String,
+        kdv: Long
+    ) -> Unit,
     onIptal: () -> Unit
 ) {
     var ad by remember { mutableStateOf(mevcutAd) }
@@ -352,68 +327,164 @@ private fun UrunFormDialog(
     var stok by remember { mutableStateOf(mevcutStok) }
     var birim by remember { mutableStateOf(mevcutBirim) }
     var kdv by remember { mutableStateOf(mevcutKdv) }
+
     var adHata by remember { mutableStateOf(false) }
+    var sayiHata by remember { mutableStateOf<String?>(null) }
 
     val birimSecenekleri = listOf("Adet", "Kg", "Lt", "Mt", "Kutu", "Paket")
     val kdvSecenekleri = listOf("0", "1", "10", "20")
+
     var birimMenuAcik by remember { mutableStateOf(false) }
     var kdvMenuAcik by remember { mutableStateOf(false) }
 
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    val barkodFocusRequester = remember { FocusRequester() }
+    val alisFocusRequester = remember { FocusRequester() }
+    val satisFocusRequester = remember { FocusRequester() }
+    val stokFocusRequester = remember { FocusRequester() }
+
+    fun sonrakiAlanaGit(focusRequester: FocusRequester) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    fun kaydet() {
+        if (ad.isBlank()) {
+            adHata = true
+            return
+        }
+
+        keyboardController?.hide()
+        focusManager.clearFocus()
+
+        val temizAlisText = alis.ifBlank { "0" }.replace(',', '.')
+        val temizSatisText = satis.ifBlank { "0" }.replace(',', '.')
+
+        if (ondalikSayi(temizAlisText) == null || ondalikSayi(temizSatisText) == null || (stok.isNotBlank() && ondalikSayi(stok) == null)) {
+            sayiHata = "Geçerli bir fiyat ve stok miktarı girin (örnek: 1,25)."; return
+        }
+        if (ondalikSayi(temizAlisText)!! < 0 || ondalikSayi(temizSatisText)!! < 0) {
+            sayiHata = "Fiyat negatif olamaz."; return
+        }
+        onKaydet(
+            barkod.trim(),
+            ad.trim(),
+            temizAlisText.toDoubleOrNull() ?: 0.0,
+            temizSatisText.toDoubleOrNull() ?: 0.0,
+            ondalikSayi(stok) ?: 0.0,
+            birim,
+            kdv.toLongOrNull() ?: 20L
+        )
+    }
+
     AlertDialog(
-        onDismissRequest = onIptal,
-        title = { Text(baslik, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Black) },
+        onDismissRequest = {
+            if (!isSaving) {
+                keyboardController?.hide()
+                focusManager.clearFocus()
+                onIptal()
+            }
+        },
+        title = {
+            Text(
+                text = baslik,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = BrandColors.Ink
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                sayiHata?.let { Text(it, color = Color.Red) }
                 if (errorMessage != null) {
-                    Text(errorMessage, color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = errorMessage,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 OutlinedTextField(
                     value = ad,
-                    onValueChange = { ad = it; adHata = false },
+                    onValueChange = {
+                        ad = it
+                        adHata = false
+                    },
                     label = { Text("Ürün Adı *") },
                     isError = adHata,
-                    supportingText = if (adHata) {{ Text("Ürün adı zorunludur") }} else null,
+                    supportingText = if (adHata) { { Text("Ürün adı zorunludur") } } else null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(barkodFocusRequester) }),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     enabled = !isSaving
                 )
+
                 OutlinedTextField(
                     value = barkod,
-                    onValueChange = { barkod = it },
+                    onValueChange = { yeniDeger -> barkod = yeniDeger.filter { it.isDigit() } },
                     label = { Text("Barkod No") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(alisFocusRequester) }),
+                    modifier = Modifier.fillMaxWidth().focusRequester(barkodFocusRequester),
                     singleLine = true,
                     enabled = !isSaving
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     OutlinedTextField(
                         value = alis,
-                        onValueChange = { alis = it },
+                        onValueChange = { yeniDeger ->
+                            alis = ondalikGirdi(yeniDeger)
+                        },
                         label = { Text("Alış Fiyatı (₺)") },
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f).focusRequester(alisFocusRequester),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(satisFocusRequester) }),
                         singleLine = true,
                         enabled = !isSaving
                     )
+
                     OutlinedTextField(
                         value = satis,
-                        onValueChange = { satis = it },
+                        onValueChange = { yeniDeger ->
+                            satis = ondalikGirdi(yeniDeger)
+                        },
                         label = { Text("Satış Fiyatı (₺)") },
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f).focusRequester(satisFocusRequester),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(stokFocusRequester) }),
                         singleLine = true,
                         enabled = !isSaving
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     OutlinedTextField(
                         value = stok,
-                        onValueChange = { stok = it },
+                        onValueChange = { yeniDeger -> stok = ondalikGirdi(yeniDeger) },
                         label = { Text("Stok Adedi") },
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f).focusRequester(stokFocusRequester),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                        }),
                         singleLine = true,
                         enabled = !isSaving
                     )
@@ -423,12 +494,23 @@ private fun UrunFormDialog(
                             value = "%$kdv",
                             onValueChange = {},
                             label = { Text("KDV Oranı") },
-                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = "KDV seç") },
                             readOnly = true,
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !isSaving
                         )
-                        if (!isSaving) Box(modifier = Modifier.matchParentSize().clickable { kdvMenuAcik = true })
+
+                        if (!isSaving) {
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        kdvMenuAcik = true
+                                    }
+                            )
+                        }
 
                         DropdownMenu(
                             expanded = kdvMenuAcik,
@@ -437,7 +519,10 @@ private fun UrunFormDialog(
                             kdvSecenekleri.forEach { oran ->
                                 DropdownMenuItem(
                                     text = { Text("%$oran") },
-                                    onClick = { kdv = oran; kdvMenuAcik = false }
+                                    onClick = {
+                                        kdv = oran
+                                        kdvMenuAcik = false
+                                    }
                                 )
                             }
                         }
@@ -449,12 +534,23 @@ private fun UrunFormDialog(
                         value = birim,
                         onValueChange = {},
                         label = { Text("Birim") },
-                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = "Birim seç") },
                         readOnly = true,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isSaving
                     )
-                    if (!isSaving) Box(modifier = Modifier.matchParentSize().clickable { birimMenuAcik = true })
+
+                    if (!isSaving) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    birimMenuAcik = true
+                                }
+                        )
+                    }
 
                     DropdownMenu(
                         expanded = birimMenuAcik,
@@ -463,7 +559,10 @@ private fun UrunFormDialog(
                         birimSecenekleri.forEach { b ->
                             DropdownMenuItem(
                                 text = { Text(b) },
-                                onClick = { birim = b; birimMenuAcik = false }
+                                onClick = {
+                                    birim = b
+                                    birimMenuAcik = false
+                                }
                             )
                         }
                     }
@@ -477,30 +576,26 @@ private fun UrunFormDialog(
         confirmButton = {
             Button(
                 enabled = !isSaving,
-                onClick = {
-                    if (ad.isEmpty()) {
-                        adHata = true
-                        return@Button
-                    }
-
-                    val temizAlisText = alis.replace(',', '.')
-                    val temizSatisText = satis.replace(',', '.')
-
-                    onKaydet(
-                        barkod,
-                        ad,
-                        temizAlisText.toDoubleOrNull() ?: 0.0,
-                        temizSatisText.toDoubleOrNull() ?: 0.0,
-                        stok.toLongOrNull() ?: 0L,
-                        birim,
-                        kdv.toLongOrNull() ?: 20L
-                    )
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-            ) { Text(if (isSaving) "Kaydediliyor..." else "Kaydet", color = Color.White) }
+                onClick = { kaydet() },
+                colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Navy)
+            ) {
+                Text(
+                    text = if (isSaving) "Kaydediliyor..." else "Kaydet",
+                    color = Color.White
+                )
+            }
         },
         dismissButton = {
-            TextButton(onClick = onIptal, enabled = !isSaving) { Text("Vazgeç", color = Color(0xFFFF3B30)) }
+            TextButton(
+                enabled = !isSaving,
+                onClick = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                    onIptal()
+                }
+            ) {
+                Text(text = "Vazgeç", color = BrandColors.Danger)
+            }
         },
         shape = RoundedCornerShape(16.dp),
         containerColor = Color.White
@@ -515,25 +610,7 @@ private fun UrunOzetKart(
     containerColor: Color = Color.White,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(text = deger, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = renk)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = baslik,
-                fontSize = 11.sp,
-                color = if (containerColor == Color.White) Color(0xFF8E8E93) else Color.White.copy(alpha = 0.8f)
-            )
-        }
-    }
+    BrandMetric(baslik, deger, renk, modifier, containerColor)
 }
 
 @Composable
@@ -542,66 +619,68 @@ private fun UrunSatiri(
     onDuzenle: () -> Unit,
     onSil: () -> Unit
 ) {
-    val stokUyarisi = urun.stokAdedi <= 5L
-    val stokRengi = if (stokUyarisi) Color(0xFFFF3B30) else Color(0xFF8E8E93)
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    BrandRecordCard(
+        title = urun.ad,
+        detail = "Barkod: ${urun.barkod.ifEmpty { "—" }} · KDV %${urun.kdvOrani}",
+        value = "₺${formatKisaPara(urun.satisFiyati)}",
+        caption = "Satış fiyatı · Stok: ${urun.stokAdedi} ${urun.birim}",
+        icon = Icons.Default.Inventory2,
+        accent = if (urun.stokAdedi <= 5L) BrandColors.Danger else BrandColors.Teal
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = urun.ad, fontSize = 17.sp, color = Color.Black)
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "KDV: %${urun.kdvOrani}", fontSize = 12.sp, color = Color(0xFF8E8E93))
-                Text(text = "•", fontSize = 12.sp, color = Color(0xFFC6C6C8))
-                Text(text = "Barkod: ${urun.barkod.ifEmpty { "-" }}", fontSize = 12.sp, color = Color(0xFF8E8E93))
-            }
+        IconButton(onClick = onDuzenle, modifier = Modifier.size(34.dp)) {
+            Icon(Icons.Default.Edit, "Ürünü düzenle", tint = BrandColors.Navy, modifier = Modifier.size(19.dp))
         }
-
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp)) {
-            Text(
-                text = "₺${urun.satisFiyati.toUrunParaFormat()}",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Stok: ${urun.stokAdedi} ${urun.birim}",
-                fontSize = 13.sp,
-                color = stokRengi
-            )
-        }
-
-        Row {
-            IconButton(onClick = onDuzenle) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Düzenle",
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(onClick = onSil) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Sil",
-                    tint = Color(0xFFFF3B30),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+        IconButton(onClick = onSil, modifier = Modifier.size(34.dp)) {
+            Icon(Icons.Default.DeleteOutline, "Ürünü sil", tint = BrandColors.Danger, modifier = Modifier.size(19.dp))
         }
     }
 }
 
-private fun Double.toUrunParaFormat(): String {
-    val negatifMi = this < 0
-    val mutlakDeger = if (negatifMi) -this else this
-    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
-    val tamKisim = yuvarlanmis.toLong()
-    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
-    val kesirStr = kesirKisim.toString().padStart(2, '0')
-    return "${if (negatifMi) "-" else ""}$tamKisim,$kesirStr"
+// =============================================================
+// PARA FORMATLAMA (BÜYÜK SAYI & KISALTMA DESTEĞİ)
+// =============================================================
+
+/**
+ * Tam tutar: binlik ayraçlı, iki ondalıklı. 70000000.0 -> "70.000.000,00"
+ * Long üzerinden hesaplanır, Double yuvarlama hatası oluşmaz.
+ */
+private fun formatUrunParaIkiBasamak(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlakDeger = if (negatifMi) -deger else deger
+
+    val kurus = ((mutlakDeger * 100.0) + 0.5).toLong()
+    val tamKisim = kurus / 100
+    val kesirKisim = kurus % 100
+
+    val tamStr = tamKisim.toString()
+    val sb = StringBuilder()
+    for (i in tamStr.indices) {
+        if (i > 0 && (tamStr.length - i) % 3 == 0) sb.append('.')
+        sb.append(tamStr[i])
+    }
+
+    val isaret = if (negatifMi) "-" else ""
+    return "$isaret$sb,${kesirKisim.toString().padStart(2, '0')}"
+}
+
+/**
+ * Dar alanlar (özet kartı, ürün listesi) için kısaltılmış tutar.
+ * 70000000.0 -> "70,0 Mn"   1250.5 -> "1.250,50"   450000.0 -> "450,0 B"
+ */
+private fun formatKisaPara(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlak = if (negatifMi) -deger else deger
+    val isaret = if (negatifMi) "-" else ""
+
+    return when {
+        mutlak >= 1_000_000_000 -> "$isaret${birOndalik(mutlak / 1_000_000_000)} Mr"
+        mutlak >= 1_000_000 -> "$isaret${birOndalik(mutlak / 1_000_000)} Mn"
+        mutlak >= 100_000 -> "$isaret${birOndalik(mutlak / 1_000)} B"
+        else -> formatUrunParaIkiBasamak(deger)
+    }
+}
+
+private fun birOndalik(deger: Double): String {
+    val x = ((deger * 10.0) + 0.5).toLong()
+    return "${x / 10},${x % 10}"
 }

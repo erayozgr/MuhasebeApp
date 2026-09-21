@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.data.model.*
 import com.eray.muhasebeapp.data.network.ApiService
+import com.eray.muhasebeapp.rememberUrlAcici
+import com.eray.muhasebeapp.util.AppConfig.ODEME_WEB_URL
 
 data class MenuButonModel(
     val baslik: String,
@@ -60,11 +63,19 @@ fun AnaMenuScreen(
     onNavigateToRaporlama: () -> Unit,
     onNavigateToStok: () -> Unit,
     onNavigateToBilgiler: () -> Unit,
-    guncelTarih: String
+    guncelTarih: String,
+    ozelliklerAcik: Boolean = false,
+    abonelikMesaji: String? = null,
+    odemeGerekli: Boolean = false,
+    kontrolEdiliyor: Boolean = false,
+    onAbonelikYenile: () -> Unit = {}
 ) {
+    val urlAcici = rememberUrlAcici()
     var urunler by remember { mutableStateOf<List<Urun>>(emptyList()) }
     
-    LaunchedEffect(Unit) {
+    LaunchedEffect(ozelliklerAcik) {
+        urunler = emptyList()
+        if (!ozelliklerAcik) return@LaunchedEffect
         try {
             urunler = apiService.getUrunler()
         } catch (e: Exception) { e.printStackTrace() }
@@ -143,6 +154,23 @@ fun AnaMenuScreen(
             TarihBari(tarih = guncelTarih)
             Spacer(modifier = Modifier.height(18.dp))
 
+            if (abonelikMesaji != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(abonelikMesaji, color = Color(0xFF14406B))
+                        if (odemeGerekli) {
+                            Button(onClick = { urlAcici.ac(ODEME_WEB_URL) }) { Text("Web sitesine git") }
+                        }
+                        if (!kontrolEdiliyor) {
+                            TextButton(onClick = onAbonelikYenile) { Text("Durumu yeniden kontrol et") }
+                        }
+                    }
+                }
+            }
+
             // 1. BÖLÜM: 3x3 HIZLI İŞLEMLER GRID
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
@@ -155,12 +183,12 @@ fun AnaMenuScreen(
                     .padding(horizontal = 16.dp)
             ) {
                 items(menuButonlari) { buton ->
-                    MenuButonItem(model = buton)
+                    MenuButonItem(model = buton, enabled = ozelliklerAcik || buton.baslik == "Bilgiler")
                 }
             }
 
             // 2. BÖLÜM: KRİTİK STOK UYARILARI
-            if (tumKritikUrunler.isNotEmpty()) {
+            if (ozelliklerAcik && tumKritikUrunler.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "KRİTİK STOK UYARILARI",
@@ -263,11 +291,12 @@ fun TarihBari(tarih: String) {
 }
 
 @Composable
-fun MenuButonItem(model: MenuButonModel) {
+fun MenuButonItem(model: MenuButonModel, enabled: Boolean = true) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { model.tiklamaAksiyonu() }
+            .alpha(if (enabled) 1f else 0.4f)
+            .clickable(enabled = enabled) { model.tiklamaAksiyonu() }
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

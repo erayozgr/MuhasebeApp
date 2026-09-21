@@ -14,7 +14,7 @@ sealed class IslemKaydi(val tarih: String, val tutar: Double) {
         IslemKaydi(masraf.tarih ?: "", masraf.tutar ?: 0.0)
 
     data class StokIslemi(val stokHareketi: StokHareketi) :
-        IslemKaydi(stokHareketi.tarih ?: "", (stokHareketi.birimFiyat ?: 0.0) * (stokHareketi.miktar ?: 0L))
+        IslemKaydi(stokHareketi.tarih ?: "", (stokHareketi.birimFiyat ?: 0.0) * (stokHareketi.miktar ?: 0.0))
 
     data class TahsilatIslemi(val tahsilat: Tahsilat) :
         IslemKaydi(tahsilat.tarih ?: "", tahsilat.tutar ?: 0.0)
@@ -45,7 +45,7 @@ fun csvRaporuOlustur(
         sb.appendLine("Masraf;${formatTarih(it.tarih)};${it.kategori} - ${it.aciklama};${it.tutar ?: 0.0}")
     }
     stokHareketleri.forEach {
-        val tutar = (it.birimFiyat ?: 0.0) * (it.miktar ?: 0L)
+        val tutar = (it.birimFiyat ?: 0.0) * (it.miktar ?: 0.0)
         sb.appendLine("Stok;${formatTarih(it.tarih)};${it.urunAdi} (${it.hareketTuru}, ${it.miktar} adet) - ${it.aciklama};$tutar")
     }
     tahsilatlar.forEach {
@@ -86,7 +86,7 @@ fun formatTarih(tarih: String?): String {
             val dateParts = parts[0].split("-") // [2026, 09, 06]
             val timeParts = parts[1].split(":") // [17, 45, 06]
             if (dateParts.size == 3 && timeParts.size >= 2) {
-                "${dateParts[2]}.${dateParts[1]}.${dateParts[0]} ${timeParts[0]}:${timeParts[1]}"
+                "${dateParts[2]}/${dateParts[1]}/${dateParts[0]} ${timeParts[0]}:${timeParts[1]}"
             } else {
                 tarih
             }
@@ -118,7 +118,7 @@ fun formatTarih(tarih: String?): String {
     val gun = d.toString().padStart(2, '0')
     val ay = m.toString().padStart(2, '0')
 
-    return "$gun.$ay.$yil $saat:$dakika"
+    return "$gun/$ay/$yil $saat:$dakika"
 }
 
 // Hem ISO string ("2026-09-06T17:45:06") hem de milisaniye ("1725637200000") destekler

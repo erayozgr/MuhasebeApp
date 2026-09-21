@@ -1,4 +1,4 @@
-rootProject.name = "HesapBende"
+rootProject.name = "HesapBenim"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {

@@ -274,4 +274,51 @@ class ApiService {
         if (response.status.value in 200..299) Result.success(Unit)
         else Result.failure(Exception("Hata (${response.status.value}): ${response.bodyAsText()}"))
     } catch (e: Exception) { Result.failure(e) }
+    suspend fun updateSatis(id: Long, request: SatisKayitRequest): Result<Satis> = try {
+        val response = NetworkClient.httpClient.put("$baseUrl/satislar/$id") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.value in 200..299) Result.success(response.body())
+        else Result.failure(Exception(response.bodyAsText()))
+    } catch (e: Exception) { Result.failure(e) }
+
+    suspend fun updateAlis(id: Long, request: AlisKayitRequest): Result<Alis> = try {
+        val response = NetworkClient.httpClient.put("$baseUrl/alislar/$id") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.value in 200..299) Result.success(response.body())
+        else Result.failure(Exception(response.bodyAsText()))
+    } catch (e: Exception) { Result.failure(e) }
+
+    suspend fun tahsilatGecmisi(): List<Tahsilat> {
+        val response = NetworkClient.httpClient.get("$baseUrl/tahsilatlar")
+        check(response.status.value in 200..299) { "Tahsilat geçmişi yüklenemedi." }
+        return response.body()
+    }
+
+    suspend fun odemeGecmisi(): List<TedarikciOdemesi> {
+        val response = NetworkClient.httpClient.get("$baseUrl/tedarikci-odemeleri")
+        check(response.status.value in 200..299) { "Ödeme geçmişi yüklenemedi." }
+        return response.body()
+    }
+
+    suspend fun updateTahsilat(id: Long, request: TahsilatRequest): Result<Tahsilat> = try {
+        val response = NetworkClient.httpClient.put("$baseUrl/tahsilatlar/$id") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.value in 200..299) Result.success(response.body())
+        else Result.failure(Exception(response.bodyAsText()))
+    } catch (e: Exception) { Result.failure(e) }
+
+    suspend fun updateTedarikciOdemesi(id: Long, request: TedarikciOdemeRequest): Result<TedarikciOdemesi> = try {
+        val response = NetworkClient.httpClient.put("$baseUrl/tedarikci-odemeleri/$id") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.value in 200..299) Result.success(response.body())
+        else Result.failure(Exception(response.bodyAsText()))
+    } catch (e: Exception) { Result.failure(e) }
 }

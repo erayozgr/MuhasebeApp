@@ -21,6 +21,9 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.eray.muhasebeapp.data.model.EmailDogrulamaRequest
+import com.eray.muhasebeapp.data.model.KayitEmailDogrulamaRequest
+import com.eray.muhasebeapp.data.model.HesapSilRequest
 
 
 object NetworkClient {
@@ -267,6 +270,192 @@ class AuthService {
                 kullaniciId = response.kullaniciId,
                 adSoyad = response.adSoyad.orEmpty(),
                 email = response.email.orEmpty()
+            )
+        }
+    }
+
+
+
+    // ---------------------------------------------------------
+// E-POSTA DOĞRULAMA KODU GÖNDER
+// ---------------------------------------------------------
+
+    suspend fun emailDogrulamaKoduGonder(
+        kullaniciId: Long
+    ): Result<AuthResponse> {
+
+        return try {
+
+            val response: AuthResponse =
+                NetworkClient.httpClient
+                    .post(
+                        "$baseUrl/kullanici/$kullaniciId/email-dogrulama-kodu"
+                    ) {
+
+                        contentType(
+                            ContentType.Application.Json
+                        )
+                    }
+                    .body()
+
+            Result.success(response)
+
+        } catch (e: Exception) {
+
+            Result.failure(e)
+        }
+    }
+
+
+// ---------------------------------------------------------
+// E-POSTA DOĞRULA
+// ---------------------------------------------------------
+
+    suspend fun emailDogrula(
+        kullaniciId: Long,
+        kod: String
+    ): Result<AuthResponse> {
+
+        return try {
+
+            val response: AuthResponse =
+                NetworkClient.httpClient
+                    .post(
+                        "$baseUrl/kullanici/$kullaniciId/email-dogrula"
+                    ) {
+
+                        contentType(
+                            ContentType.Application.Json
+                        )
+
+                        setBody(
+                            EmailDogrulamaRequest(
+                                kod = kod
+                            )
+                        )
+                    }
+                    .body()
+
+            Result.success(response)
+
+        } catch (e: Exception) {
+
+            Result.failure(e)
+        }
+    }
+
+    suspend fun kayitEmailDogrula(
+        email: String,
+        kod: String
+    ): Result<AuthResponse> {
+
+        return try {
+
+            val response: AuthResponse =
+                NetworkClient.httpClient
+                    .post(
+                        "$baseUrl/register/email-dogrula"
+                    ) {
+
+                        contentType(
+                            ContentType.Application.Json
+                        )
+
+                        setBody(
+                            KayitEmailDogrulamaRequest(
+                                email = email,
+                                kod = kod
+                            )
+                        )
+                    }
+                    .body()
+
+
+            oturumuKaydet(
+                response
+            )
+
+
+            Result.success(
+                response
+            )
+
+        } catch (e: Exception) {
+
+            Result.failure(
+                e
+            )
+        }
+    }
+
+    suspend fun hesapSilmeKoduGonder(
+        kullaniciId: Long
+    ): Result<AuthResponse> {
+
+        return try {
+
+            val response: AuthResponse =
+                NetworkClient.httpClient
+                    .post(
+                        "$baseUrl/kullanici/$kullaniciId/hesap-silme-kodu"
+                    ) {
+
+                        contentType(
+                            ContentType.Application.Json
+                        )
+                    }
+                    .body()
+
+
+            Result.success(
+                response
+            )
+
+
+        } catch (e: Exception) {
+
+            Result.failure(
+                e
+            )
+        }
+    }
+
+
+    suspend fun hesabiSil(
+        kullaniciId: Long,
+        kod: String
+    ): Result<AuthResponse> {
+
+        return try {
+
+            val response: AuthResponse =
+                NetworkClient.httpClient
+                    .post(
+                        "$baseUrl/kullanici/$kullaniciId/hesap-sil"
+                    ) {
+
+                        contentType(
+                            ContentType.Application.Json
+                        )
+
+                        setBody(
+                            HesapSilRequest(
+                                kod = kod
+                            )
+                        )
+                    }
+                    .body()
+
+
+            Result.success(
+                response
+            )
+
+
+        } catch (e: Exception) {
+
+            Result.failure(
+                e
             )
         }
     }

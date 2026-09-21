@@ -30,7 +30,7 @@ suspend fun excelXlsxOlustur(
     val netKar = toplamSatis - toplamAlis - toplamMasraf
     val ortalamaSatis = if (satislar.isNotEmpty()) toplamSatis / satislar.size else 0.0
     val ortalamaAlis = if (alislar.isNotEmpty()) toplamAlis / alislar.size else 0.0
-    val stokHareketToplami = stokHareketleri.sumOf { (it.birimFiyat ?: 0.0) * (it.miktar ?: 0L) }
+    val stokHareketToplami = stokHareketleri.sumOf { (it.birimFiyat ?: 0.0) * (it.miktar ?: 0.0) }
 
     val donemMetni = raporDonemMetni(baslangicMs, bitisMs)
 
@@ -122,7 +122,7 @@ suspend fun excelXlsxOlustur(
                         Cell.Text(raporTarih(s.tarih), S_DATE_TEXT),
                         Cell.Text(musteriAdiGoster),
                         Cell.Text(k.urunAdi),
-                        Cell.Num((k.adet ?: 0L).toDouble(), S_INTEGER),
+                        Cell.Num((k.adet ?: 0.0).toDouble(), S_DECIMAL),
                         Cell.Text(k.birim ?: "-", S_CENTER),
                         Cell.Num(k.birimFiyat ?: 0.0, S_CURRENCY),
                         Cell.Num(k.toplam ?: 0.0, S_CURRENCY)
@@ -181,7 +181,7 @@ suspend fun excelXlsxOlustur(
                         Cell.Text(raporTarih(a.tarih), S_DATE_TEXT),
                         Cell.Text(tedarikciGoster),
                         Cell.Text(k.urunAdi),
-                        Cell.Num((k.adet ?: 0L).toDouble(), S_INTEGER),
+                        Cell.Num((k.adet ?: 0.0).toDouble(), S_DECIMAL),
                         Cell.Num(k.birimFiyat ?: 0.0, S_CURRENCY),
                         Cell.Num(k.toplam ?: 0.0, S_CURRENCY)
                     )
@@ -252,12 +252,12 @@ suspend fun excelXlsxOlustur(
         )
         stokHareketleri.forEach { h ->
             val birimFiyat = h.birimFiyat ?: 0.0
-            val miktar = h.miktar ?: 0L
+            val miktar = h.miktar ?: 0.0
             b.row(
                 Cell.Text(raporTarih(h.tarih), S_DATE_TEXT),
                 Cell.Text(h.urunAdi),
                 Cell.Text(h.hareketTuru),
-                Cell.Num(miktar.toDouble(), S_INTEGER),
+                Cell.Num(miktar.toDouble(), S_DECIMAL),
                 Cell.Num(birimFiyat, S_CURRENCY),
                 Cell.Text(h.aciklama ?: "-"),
                 Cell.Num(birimFiyat * miktar, S_CURRENCY)
@@ -417,6 +417,7 @@ private const val S_SECTION = 4
 private const val S_HEADER = 5
 private const val S_TEXT = 6
 private const val S_CENTER = 7
+private const val S_DECIMAL = 9
 private const val S_INTEGER = 8
 private const val S_NUMBER = 9
 private const val S_CURRENCY = 10

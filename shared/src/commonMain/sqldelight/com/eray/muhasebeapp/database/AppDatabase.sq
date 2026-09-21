@@ -8,7 +8,7 @@ CREATE TABLE UrunEntity (
     ad TEXT NOT NULL,
     alisFiyati REAL NOT NULL,
     satisFiyati REAL NOT NULL,
-    stokAdedi INTEGER NOT NULL,
+    stokAdedi REAL NOT NULL,
     birim TEXT NOT NULL,
     kdvOrani INTEGER NOT NULL
 );
@@ -42,7 +42,7 @@ CREATE TABLE SatisKalemi (
     satisId INTEGER NOT NULL,
     urunId INTEGER NOT NULL,
     urunAdi TEXT NOT NULL,
-    adet INTEGER NOT NULL,
+    adet REAL NOT NULL,
     birim TEXT NOT NULL DEFAULT 'adet',
     birimFiyat REAL NOT NULL,
     toplam REAL NOT NULL
@@ -61,7 +61,7 @@ CREATE TABLE AlisKalemi (
     alisId INTEGER NOT NULL,
     urunId INTEGER NOT NULL,
     urunAdi TEXT NOT NULL,
-    adet INTEGER NOT NULL,
+    adet REAL NOT NULL,
     birimFiyat REAL NOT NULL,
     toplam REAL NOT NULL
 );
@@ -79,7 +79,7 @@ CREATE TABLE StokHareketi (
     urunId INTEGER NOT NULL,
     urunAdi TEXT NOT NULL,
     hareketTuru TEXT NOT NULL,
-    miktar INTEGER NOT NULL,
+    miktar REAL NOT NULL,
     birimFiyat REAL NOT NULL DEFAULT 0.0,
     aciklama TEXT NOT NULL,
     tarih TEXT NOT NULL

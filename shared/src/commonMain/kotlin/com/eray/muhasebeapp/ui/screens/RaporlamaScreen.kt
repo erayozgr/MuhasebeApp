@@ -1,8 +1,9 @@
 package com.eray.muhasebeapp.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import com.eray.muhasebeapp.ui.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,8 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,7 +31,6 @@ import com.eray.muhasebeapp.formatTarih
 import com.eray.muhasebeapp.parseTarihMillis
 import com.eray.muhasebeapp.excelXlsxOlustur
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.text.selection.SelectionContainer
 
 enum class RaporDonemi(val etiket: String) {
     TUM_ZAMANLAR("Tüm Zamanlar"),
@@ -40,7 +40,7 @@ enum class RaporDonemi(val etiket: String) {
     BUGUN("Bugün")
 }
 
-fun donemBaslangicMillis(donem: RaporDonemi, simdiMillis: Long): Long? {
+private fun donemBaslangicMillis(donem: RaporDonemi, simdiMillis: Long): Long? {
     val tzOffsetMillis = 3L * 3600L * 1000L
     val yerelSimdi = simdiMillis + tzOffsetMillis
     val toplamSaniye = yerelSimdi / 1000L
@@ -121,7 +121,6 @@ fun RaporlamaScreen(
     var islemSayisi by remember { mutableStateOf(0) }
     var ortalamaSatisTutari by remember { mutableStateOf(0.0) }
 
-    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(seciliDonem, mevcutLimit) {
@@ -160,7 +159,6 @@ fun RaporlamaScreen(
                             tahsilatlarFiltreli.map { HafifIslem.T(it) } +
                             odemelerFiltreli.map { HafifIslem.O(it) }
                     )
-                // Önce gün, aynı gün içinde sadece ekranda görünen saat sırası.
                 .sortedWith(
                     compareByDescending<HafifIslem> { islemGunAnahtari(it.tarih) }
                         .thenByDescending { islemSaatAnahtari(it.tarih) }
@@ -188,23 +186,27 @@ fun RaporlamaScreen(
             gruplanmisIslemler = tamIslemler
                 .groupBy { islem -> formatTarih(islem.tarih).substringBefore(" ") }
                 .mapValues { (_, islemler) ->
-                    // Aynı gün içinde kategoriye bakma; yalnızca ekranda görünen saate göre sırala.
                     islemler.sortedByDescending { islemSaatAnahtari(it.tarih) }
                 }
 
         } catch (e: Throwable) {
-            hataMesaji = "VERİ İŞLEME HATASI: ${e::class.simpleName}: ${e.message}"
+            println("Raporlama Veri İşleme Hatası: ${e.message}")
+            hataMesaji = "İşlem başarısız. Tekrar deneyin."
         } finally {
             yukleniyor = false
         }
     }
 
     if (hataMesaji != null) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart) {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("Bir hata oluştu:", fontWeight = FontWeight.Bold, color = Color.Red)
-                Spacer(modifier = Modifier.height(8.dp))
-                SelectionContainer { Text(hataMesaji ?: "", fontSize = 12.sp) }
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    hataMesaji ?: "",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Red,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { hataMesaji = null; mevcutLimit = 30 }) { Text("Tekrar Dene") }
             }
         }
@@ -215,37 +217,15 @@ fun RaporlamaScreen(
     var detayliRaporDialogAcik by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = Color(0xFFF2F2F7),
-        modifier = Modifier.pointerInput(Unit) {
-            detectHorizontalDragGestures(
-                onDragStart = { horizontalDragAccumulator = 0f },
-                onDragEnd = {
-                    if (horizontalDragAccumulator > 150f) {
-                        onNavigateBack()
-                    }
-                },
-                onDragCancel = { horizontalDragAccumulator = 0f },
-                onHorizontalDrag = { change, dragAmount ->
-                    change.consume()
-                    horizontalDragAccumulator += dragAmount
-                }
-            )
-        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = BrandColors.Background,
+        modifier = Modifier.swipeToBack(onBack = onNavigateBack),
         topBar = {
-            TopAppBar(
-                title = { Text("Raporlama", fontWeight = FontWeight.Bold, color = Color.Black) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.Black)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { detayliRaporDialogAcik = true }) {
-                        Icon(Icons.Default.FileDownload, contentDescription = "Rapor Çıkar", tint = Color(0xFF007AFF))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
-            )
+            BrandTopBar("Raporlar", "İşletmenizin finansal görünümü", onNavigateBack) {
+                IconButton(onClick = { detayliRaporDialogAcik = true }) {
+                    Icon(Icons.Default.FileDownload, contentDescription = "Rapor Çıkar", tint = Color.White)
+                }
+            }
         }
     ) { scaffoldPadding ->
         LazyColumn(
@@ -271,7 +251,7 @@ fun RaporlamaScreen(
                             onClick = { seciliDonem = donem; mevcutLimit = 30 },
                             label = { Text(donem.etiket, fontSize = 13.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF007AFF),
+                                selectedContainerColor = BrandColors.Navy,
                                 selectedLabelColor = Color.White
                             ),
                             shape = RoundedCornerShape(16.dp)
@@ -285,8 +265,8 @@ fun RaporlamaScreen(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    RaporOzetKart("Satış (Ciro)", "₺${formatRaporIkiBasamak(toplamSatis)}", Color(0xFF34C759), Modifier.weight(1f))
-                    RaporOzetKart("Alış", "₺${formatRaporIkiBasamak(toplamAlis)}", Color(0xFFFF9500), Modifier.weight(1f))
+                    RaporOzetKart("Satış (Ciro)", "₺${formatKisaPara(toplamSatis)}", BrandColors.Success, Modifier.weight(1f))
+                    RaporOzetKart("Alış", "₺${formatKisaPara(toplamAlis)}", BrandColors.Warning, Modifier.weight(1f))
                 }
             }
 
@@ -295,16 +275,16 @@ fun RaporlamaScreen(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    RaporOzetKart("Müşteri Tahsilatı", "₺${formatRaporIkiBasamak(toplamTahsilat)}", Color(0xFF34C759), Modifier.weight(1f))
-                    RaporOzetKart("Tedarikçi Ödemesi", "₺${formatRaporIkiBasamak(toplamOdeme)}", Color(0xFFFF3B30), Modifier.weight(1f))
+                    RaporOzetKart("Müşteri Tahsilatı", "₺${formatKisaPara(toplamTahsilat)}", BrandColors.Success, Modifier.weight(1f))
+                    RaporOzetKart("Tedarikçi Ödemesi", "₺${formatKisaPara(toplamOdeme)}", BrandColors.Danger, Modifier.weight(1f))
                 }
             }
 
             item {
                 RaporOzetKart(
                     baslik = "Toplam Masraf",
-                    deger = "₺${formatRaporIkiBasamak(toplamMasraf)}",
-                    renk = Color(0xFFFF3B30),
+                    deger = "₺${formatKisaPara(toplamMasraf)}",
+                    renk = BrandColors.Danger,
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp)
                 )
             }
@@ -312,8 +292,8 @@ fun RaporlamaScreen(
             item {
                 RaporOzetKart(
                     baslik = "Net Kâr / Zarar (Nakit)",
-                    deger = "₺${formatRaporIkiBasamak(netKar)}",
-                    renk = if (netKar >= 0) Color(0xFF007AFF) else Color(0xFFFF3B30),
+                    deger = "₺${formatKisaPara(netKar)}",
+                    renk = if (netKar >= 0) BrandColors.Navy else BrandColors.Danger,
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp)
                 )
             }
@@ -323,17 +303,17 @@ fun RaporlamaScreen(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    RaporOzetKart("İşlem Sayısı (Satış)", islemSayisi.toString(), Color(0xFF007AFF), Modifier.weight(1f))
-                    RaporOzetKart("Ort. Satış Tutarı", "₺${formatRaporIkiBasamak(ortalamaSatisTutari)}", Color(0xFF5856D6), Modifier.weight(1f))
+                    RaporOzetKart("İşlem Sayısı (Satış)", islemSayisi.toString(), BrandColors.Navy, Modifier.weight(1f))
+                    RaporOzetKart("Ort. Satış Tutarı", "₺${formatKisaPara(ortalamaSatisTutari)}", BrandColors.Teal, Modifier.weight(1f))
                 }
             }
 
             item {
                 Button(
                     onClick = { detayliRaporDialogAcik = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Navy),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 0.dp).height(48.dp)
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 0.dp).heightIn(min = 48.dp)
                 ) {
                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
@@ -346,7 +326,7 @@ fun RaporlamaScreen(
                     text = "TÜM İŞLEMLER",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF8E8E93),
+                    color = BrandColors.Muted,
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
                 )
             }
@@ -354,7 +334,7 @@ fun RaporlamaScreen(
             if (gruplanmisIslemler.isEmpty() && !yukleniyor) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                        Text("Henüz işlem yok", color = Color(0xFF8E8E93), fontSize = 15.sp)
+                        Text("Henüz işlem yok", color = BrandColors.Muted, fontSize = 15.sp)
                     }
                 }
             } else {
@@ -364,7 +344,7 @@ fun RaporlamaScreen(
                             text = tarihBasligi,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF007AFF),
+                            color = BrandColors.Navy,
                             modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 2.dp)
                         )
                     }
@@ -383,7 +363,7 @@ fun RaporlamaScreen(
                 ) {
                     TextButton(
                         onClick = { mevcutLimit += 30 },
-                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF007AFF))
+                        colors = ButtonDefaults.textButtonColors(contentColor = BrandColors.Navy)
                     ) {
                         Text("Daha Fazla İşlem Yükle (+30)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
@@ -456,7 +436,7 @@ fun RaporlamaScreen(
                             alisKalemleriGetir = { id -> try { apiService.getAlisKalemler(id) } catch (e: Exception) { emptyList() } }
                         )
 
-                        val bugununTarihi = formatTarih(simdiMillis.toString()).substringBefore(" ").replace(".", "-")
+                        val bugununTarihi = formatTarih(simdiMillis.toString()).substringBefore(" ").replace("/", "-")
                         val dosyaAdi = "${dosyaAdiIcinTemizle(raporTuru)}_$bugununTarihi.xlsx"
                         dosyaPaylasici.paylasBytes(dosyaAdi, bytes)
                     } catch (e: Exception) { e.printStackTrace() }
@@ -497,7 +477,7 @@ fun DetayliRaporFiltreDialog(
         try {
             musteriler = apiService.getMusteriler()
             tedarikciler = apiService.getTedarikciler()
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     val raporTurleri = listOf("Genel Rapor", "Satış Raporu", "Alış Raporu", "Masraf Raporu", "Stok Hareketi Raporu", "Tahsilat Raporu")
@@ -511,13 +491,13 @@ fun DetayliRaporFiltreDialog(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Rapor İçeriği Seçin", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                Text("Rapor İçeriği Seçin", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.Ink)
                 Box {
                     OutlinedTextField(
                         value = raporTuru,
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { IconButton(onClick = {raporTuruMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                        trailingIcon = { IconButton(onClick = { raporTuruMenuAcik = true }) { Icon(Icons.Default.ArrowDropDown, null) } },
                         modifier = Modifier.fillMaxWidth().clickable { raporTuruMenuAcik = true },
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -538,13 +518,13 @@ fun DetayliRaporFiltreDialog(
                     }
                 }
 
-                Text("Dönem Seçin (Hazır Filtre)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                Text("Dönem Seçin (Hazır Filtre)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.Ink)
                 Box {
                     OutlinedTextField(
                         value = seciliDialogDonem.etiket,
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { IconButton(onClick = {donemMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                        trailingIcon = { IconButton(onClick = { donemMenuAcik = true }) { Icon(Icons.Default.ArrowDropDown, null) } },
                         modifier = Modifier.fillMaxWidth().clickable { donemMenuAcik = true },
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -566,13 +546,13 @@ fun DetayliRaporFiltreDialog(
                 }
 
                 if (raporTuru == "Satış Raporu" || raporTuru == "Tahsilat Raporu") {
-                    Text("Filtrelenecek Müşteri", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text("Filtrelenecek Müşteri", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.Ink)
                     Box {
                         OutlinedTextField(
                             value = seciliMusteri?.ad ?: "Tüm Müşteriler",
                             onValueChange = {},
                             readOnly = true,
-                            trailingIcon = { IconButton(onClick = {musteriMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                            trailingIcon = { IconButton(onClick = { musteriMenuAcik = true }) { Icon(Icons.Default.ArrowDropDown, null) } },
                             modifier = Modifier.fillMaxWidth().clickable { musteriMenuAcik = true },
                             shape = RoundedCornerShape(8.dp)
                         )
@@ -602,13 +582,13 @@ fun DetayliRaporFiltreDialog(
                 }
 
                 if (raporTuru == "Alış Raporu") {
-                    Text("Filtrelenecek Tedarikçi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text("Filtrelenecek Tedarikçi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.Ink)
                     Box {
                         OutlinedTextField(
                             value = seciliTedarikci?.ad ?: "Tüm Tedarikçiler",
                             onValueChange = {},
                             readOnly = true,
-                            trailingIcon = { IconButton(onClick = {tedarikciMenuAcik = true}) { Icon(Icons.Default.ArrowDropDown, null) } },
+                            trailingIcon = { IconButton(onClick = { tedarikciMenuAcik = true }) { Icon(Icons.Default.ArrowDropDown, null) } },
                             modifier = Modifier.fillMaxWidth().clickable { tedarikciMenuAcik = true },
                             shape = RoundedCornerShape(8.dp)
                         )
@@ -638,14 +618,14 @@ fun DetayliRaporFiltreDialog(
                 }
 
                 if (seciliDialogDonem == RaporDonemi.TUM_ZAMANLAR) {
-                    Text("Özel Tarih Aralığı (İsteğe Bağlı)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    Text("Özel Tarih Aralığı (İsteğe Bağlı)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.Ink)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Button(
                             onClick = { baslangicPickerAcik = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Background, contentColor = BrandColors.Ink),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -657,7 +637,7 @@ fun DetayliRaporFiltreDialog(
 
                         Button(
                             onClick = { bitisPickerAcik = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7), contentColor = Color.Black),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Background, contentColor = BrandColors.Ink),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -687,7 +667,7 @@ fun DetayliRaporFiltreDialog(
                         seciliTedarikci?.id
                     )
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759)),
+                colors = ButtonDefaults.buttonColors(containerColor = BrandColors.Success),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -713,18 +693,7 @@ fun DetayliRaporFiltreDialog(
 
 @Composable
 private fun RaporOzetKart(baslik: String, deger: String, renk: Color, modifier: Modifier = Modifier) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-    ) {
-        Column(modifier = Modifier.padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 14.dp)) {
-            Text(baslik, fontSize = 12.sp, color = Color(0xFF8E8E93))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(deger, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = renk)
-        }
-    }
+    BrandMetric(baslik, deger, renk, modifier)
 }
 
 @Composable
@@ -735,13 +704,13 @@ private fun IslemKart(islem: IslemKaydi) {
                 "Masraf",
                 islem.masraf.kategori ?: "-",
                 islem.masraf.tutar ?: 0.0,
-                Color(0xFFFF3B30),
+                BrandColors.Danger,
                 Icons.Default.Receipt
             )
         }
         is IslemKaydi.StokIslemi -> IslemGoruntu(
             "Stok Hareketi", "${islem.stokHareketi.urunAdi} • ${islem.stokHareketi.hareketTuru} (${islem.stokHareketi.miktar})",
-            islem.tutar, Color(0xFF5856D6), Icons.Default.Inventory2
+            islem.tutar, BrandColors.Teal, Icons.Default.Inventory2
         )
         is IslemKaydi.SatisIslemi -> {
             val urunListesi = islem.kalemler.joinToString(", ") { "${it.urunAdi} x${it.adet}" }
@@ -749,7 +718,7 @@ private fun IslemKart(islem: IslemKaydi) {
             IslemGoruntu(
                 "Satış",
                 if (urunListesi.isNotEmpty()) "$urunListesi\n$musteriGoster" else musteriGoster,
-                islem.satis.toplamTutar ?: 0.0, Color(0xFF34C759), Icons.Default.TrendingUp
+                islem.satis.toplamTutar ?: 0.0, BrandColors.Success, Icons.Default.TrendingUp
             )
         }
         is IslemKaydi.AlisIslemi -> {
@@ -758,56 +727,33 @@ private fun IslemKart(islem: IslemKaydi) {
             IslemGoruntu(
                 "Alış",
                 if (urunListesi.isNotEmpty()) "$urunListesi\n$tedarikciGoster" else tedarikciGoster,
-                islem.alis.toplamTutar ?: 0.0, Color(0xFFFF9500), Icons.Default.ShoppingBag
+                islem.alis.toplamTutar ?: 0.0, BrandColors.Warning, Icons.Default.ShoppingBag
             )
         }
         is IslemKaydi.TahsilatIslemi -> IslemGoruntu(
             "Tahsilat (Ödeme Alındı)",
             "${islem.tahsilat.musteriAdi ?: "Müşteri"} tarafından yapılan ödeme",
             islem.tahsilat.tutar ?: 0.0,
-            Color(0xFF34C759),
+            BrandColors.Success,
             Icons.Default.Payments
         )
         is IslemKaydi.TedarikciOdemeIslemi -> IslemGoruntu(
             "Tedarikçiye Ödeme Yapıldı",
             "${islem.odeme.tedarikciAdi ?: "Tedarikçi"} firmasına yapılan nakit/havale",
             islem.odeme.tutar ?: 0.0,
-            Color(0xFFFF3B30),
+            BrandColors.Danger,
             Icons.Default.Payments
         )
     }
 
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Box(
-                modifier = Modifier.size(40.dp).background(renk.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(ikon, contentDescription = null, tint = renk)
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = baslik, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(text = altBaslik, fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 16.sp)
-            }
-
-            Column(horizontalAlignment = Alignment.End, modifier = Modifier.wrapContentWidth()) {
-                Text(text = "₺${formatRaporIkiBasamak(tutar)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = renk, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = formatTarih(islem.tarih), fontSize = 11.sp, color = Color(0xFF8E8E93), maxLines = 1)
-            }
-        }
-    }
+    BrandRecordCard(
+        title = baslik,
+        detail = altBaslik,
+        value = "₺${formatKisaPara(tutar)}",
+        caption = formatTarih(islem.tarih),
+        icon = ikon,
+        accent = renk
+    )
 }
 
 private data class IslemGoruntu(
@@ -818,14 +764,53 @@ private data class IslemGoruntu(
     val ikon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
+// =============================================================
+// PARA FORMATLAMA (BÜYÜK SAYI & KISALTMA DESTEĞİ)
+// =============================================================
+
+/**
+ * Tam tutar: binlik ayraçlı, iki ondalıklı. 70000000.0 -> "70.000.000,00"
+ * Long üzerinden hesaplanır, Double yuvarlama hatası oluşmaz.
+ */
 private fun formatRaporIkiBasamak(deger: Double): String {
     val negatifMi = deger < 0
     val mutlakDeger = if (negatifMi) -deger else deger
-    val yuvarlanmis = ((mutlakDeger * 100.0) + 0.5).toLong() / 100.0
-    val tamKisim = yuvarlanmis.toLong()
-    val kesirKisim = (((yuvarlanmis - tamKisim) * 100.0) + 0.5).toLong()
-    val kesirStr = kesirKisim.toString().padStart(2, '0')
-    return "${if (negatifMi) "-" else ""}$tamKisim.$kesirStr"
+
+    val kurus = ((mutlakDeger * 100.0) + 0.5).toLong()
+    val tamKisim = kurus / 100
+    val kesirKisim = kurus % 100
+
+    val tamStr = tamKisim.toString()
+    val sb = StringBuilder()
+    for (i in tamStr.indices) {
+        if (i > 0 && (tamStr.length - i) % 3 == 0) sb.append('.')
+        sb.append(tamStr[i])
+    }
+
+    val isaret = if (negatifMi) "-" else ""
+    return "$isaret$sb,${kesirKisim.toString().padStart(2, '0')}"
+}
+
+/**
+ * Dar alanlar (özet metrikleri, işlem kartları) için kısaltılmış tutar.
+ * 70000000.0 -> "70,0 Mn"   1250.5 -> "1.250,50"   450000.0 -> "450,0 B"
+ */
+private fun formatKisaPara(deger: Double): String {
+    val negatifMi = deger < 0
+    val mutlak = if (negatifMi) -deger else deger
+    val isaret = if (negatifMi) "-" else ""
+
+    return when {
+        mutlak >= 1_000_000_000 -> "$isaret${birOndalik(mutlak / 1_000_000_000)} Mr"
+        mutlak >= 1_000_000 -> "$isaret${birOndalik(mutlak / 1_000_000)} Mn"
+        mutlak >= 100_000 -> "$isaret${birOndalik(mutlak / 1_000)} B"
+        else -> formatRaporIkiBasamak(deger)
+    }
+}
+
+private fun birOndalik(deger: Double): String {
+    val x = ((deger * 10.0) + 0.5).toLong()
+    return "${x / 10},${x % 10}"
 }
 
 private fun dosyaAdiIcinTemizle(metin: String): String = metin
@@ -838,8 +823,6 @@ private fun dosyaAdiIcinTemizle(metin: String): String = metin
     .replace("ö", "o").replace("Ö", "O")
 
 private fun islemSaatAnahtari(tarih: String): Int {
-    // Sıralamayı kartta gerçekten gösterilen saat üzerinden yapıyoruz.
-    // Böylece ham tarih alanının epoch/string olması veya kategoriye göre farklılaşması etkilemez.
     val formatli = formatTarih(tarih)
     val eslesme = Regex("""(\d{1,2}):(\d{2})(?::(\d{2}))?""").find(formatli)
         ?: return 0
@@ -852,7 +835,6 @@ private fun islemSaatAnahtari(tarih: String): Int {
 }
 
 private fun islemGunAnahtari(tarih: String): Int {
-    // Gün gruplarının da en yeniden eskiye kalması için sadece tarih kısmını anahtar yapıyoruz.
     val formatli = formatTarih(tarih)
     val eslesme = Regex("""(\d{1,2})[./-](\d{1,2})[./-](\d{4})""").find(formatli)
         ?: return 0
@@ -864,7 +846,7 @@ private fun islemGunAnahtari(tarih: String): Int {
     return yil * 10000 + ay * 100 + gun
 }
 
-sealed class HafifIslem(val tarih: String) {
+private sealed class HafifIslem(val tarih: String) {
     class S(val satis: Satis) : HafifIslem(satis.tarih ?: "")
     class A(val alis: Alis) : HafifIslem(alis.tarih ?: "")
     class M(val masraf: Masraf) : HafifIslem(masraf.tarih ?: "")

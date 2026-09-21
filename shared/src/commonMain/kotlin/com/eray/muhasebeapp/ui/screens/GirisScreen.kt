@@ -29,17 +29,20 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eray.muhasebeapp.data.model.LoginRequest
 import com.eray.muhasebeapp.data.model.RegisterRequest
 import com.eray.muhasebeapp.data.network.AuthService
-import kotlinx.coroutines.launch
-import hesapbende.shared.generated.resources.Res
-import hesapbende.shared.generated.resources.hesap_bende_uzun_logo
-import org.jetbrains.compose.resources.painterResource
-import com.eray.muhasebeapp.util.SessionManager
 import com.eray.muhasebeapp.util.AppConfig.SURUM
+import com.eray.muhasebeapp.util.AppConfig.SOZLESME_SURUMU
+import com.eray.muhasebeapp.util.AppConfig.SOZLESME_URL
+import com.eray.muhasebeapp.rememberUrlAcici
+import hesapbenim.shared.generated.resources.Res
+import hesapbenim.shared.generated.resources.hesap_benim_uzun_logo
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
 
 private val ArkaPlanGradyan = Brush.verticalGradient(
     colors = listOf(
@@ -54,6 +57,7 @@ private val BeyazYariSeffaf = Color.White.copy(alpha = 0.14f)
 
 @Composable
 fun GirisScreen(
+    onSifremiUnuttum: (() -> Unit)? = null,
     onGirisBasarili: (
         kullaniciId: Long,
         adSoyad: String,
@@ -61,6 +65,9 @@ fun GirisScreen(
     ) -> Unit
 ) {
     var isKayitModu by remember { mutableStateOf(false) }
+    var sozlesmeKabul by remember { mutableStateOf(false) }
+    val urlAcici = rememberUrlAcici()
+
     var adSoyad by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var telefon by remember { mutableStateOf("") }
@@ -73,10 +80,16 @@ fun GirisScreen(
     var yukleniyor by remember { mutableStateOf(false) }
     var hataMesaji by remember { mutableStateOf<String?>(null) }
 
+    // =========================================================
+    // KAYIT E-POSTA DOĞRULAMA
+    // =========================================================
+
+    var kayitEmailDogrulamaAcik by remember { mutableStateOf(false) }
+    var bekleyenKayitRequest by remember { mutableStateOf<RegisterRequest?>(null) }
+
     val coroutineScope = rememberCoroutineScope()
     val authService = remember { AuthService() }
 
-    // Klavye ve Odak Yönetimi
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -85,9 +98,14 @@ fun GirisScreen(
     val sifreFocusRequester = remember { FocusRequester() }
     val sifreTekrarFocusRequester = remember { FocusRequester() }
 
-    // ---------------------------------------------------------
-    // DOĞRULAMA FONKSİYONLARI
-    // ---------------------------------------------------------
+    fun sonrakiAlanaGit(focusRequester: FocusRequester) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    // =========================================================
+    // VALIDASYON
+    // =========================================================
 
     fun emailGecerliMi(email: String): Boolean {
         val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
@@ -189,13 +207,22 @@ fun GirisScreen(
             hataMesaji = "Girdiğiniz şifreler birbiriyle eşleşmiyor."
             return false
         }
-
         return true
     }
 
-    // Hem Buton hem de Klavyedeki Done aksiyonunun tetiklediği ana işlem
+    // =========================================================
+    // GİRİŞ VEYA KAYIT
+    // =========================================================
+
     fun girisVeyaKayitYap() {
-        if (!formGecerliMi() || yukleniyor) return
+        if (isKayitModu && !sozlesmeKabul) {
+            hataMesaji = "Kayıt olmak için Kullanıcı Sözleşmesi’ni kabul etmelisiniz."
+            return
+        }
+
+        if (!formGecerliMi() || yukleniyor) {
+            return
+        }
 
         keyboardController?.hide()
         focusManager.clearFocus()
@@ -208,42 +235,29 @@ fun GirisScreen(
                 val temizEmail = email.trim().lowercase()
                 val temizTelefon = telefon.trim()
 
-                val result = authService.register(
-                    RegisterRequest(
-                        adSoyad = adSoyad.trim(),
-                        email = temizEmail,
-                        telefon = temizTelefon,
-                        sifre = sifre
-                    )
+                val request = RegisterRequest(
+                    adSoyad = adSoyad.trim(),
+                    email = temizEmail,
+                    telefon = temizTelefon,
+                    sifre = sifre,
+                    kullaniciSozlesmesiKabul = sozlesmeKabul,
+                    sozlesmeSurumu = SOZLESME_SURUMU
                 )
 
+                val result = authService.register(request)
                 yukleniyor = false
 
                 result.onSuccess { res ->
-                    if (
-                        res.basarili &&
-                        res.kullaniciId != null &&
-                        res.token != null &&
-                        res.tokenBitisZamani != null
-                    ) {
-                        SessionManager.saveSession(
-                            token = res.token,
-                            tokenBitisZamani = res.tokenBitisZamani,
-                            kullaniciId = res.kullaniciId,
-                            adSoyad = res.adSoyad.orEmpty(),
-                            email = res.email.orEmpty()
-                        )
-
-                        onGirisBasarili(
-                            res.kullaniciId,
-                            res.adSoyad.orEmpty(),
-                            res.email.orEmpty()
-                        )
+                    if (res.basarili) {
+                        bekleyenKayitRequest = request
+                        kayitEmailDogrulamaAcik = true
                     } else {
-                        hataMesaji = res.mesaj
+                        println("Kayıt Hatası (Sunucu): ${res.mesaj}")
+                        hataMesaji = res.mesaj.ifBlank { "Doğrulama kodu gönderilemedi." }
                     }
                 }.onFailure { err ->
-                    hataMesaji = "Sunucu bağlantı hatası: ${err.message}"
+                    println("Kayıt Hatası (Kritik): ${err.message}")
+                    hataMesaji = "İşlem başarısız. Tekrar deneyin."
                 }
             } else {
                 val girisDegeri = email.trim().lowercase()
@@ -253,7 +267,6 @@ fun GirisScreen(
                         sifre = sifre
                     )
                 )
-
                 yukleniyor = false
 
                 result.onSuccess { res ->
@@ -264,14 +277,41 @@ fun GirisScreen(
                             res.email.orEmpty()
                         )
                     } else {
-                        hataMesaji = res.mesaj
+                        println("Giriş Hatası (Sunucu): ${res.mesaj}")
+                        hataMesaji = res.mesaj.ifBlank { "Giriş yapılamadı." }
                     }
                 }.onFailure { err ->
-                    hataMesaji = "Sunucu bağlantı hatası: ${err.message}"
+                    println("Giriş Hatası (Kritik): ${err.message}")
+                    hataMesaji = "İşlem başarısız. Tekrar deneyin."
                 }
             }
         }
     }
+
+    // =========================================================
+    // KAYIT E-POSTA DOĞRULAMA EKRANI
+    // =========================================================
+
+    if (kayitEmailDogrulamaAcik && bekleyenKayitRequest != null) {
+        KayitEmailDogrulamaScreen(
+            request = bekleyenKayitRequest!!,
+            authService = authService,
+            onGeri = {
+                kayitEmailDogrulamaAcik = false
+                bekleyenKayitRequest = null
+            },
+            onKayitTamamlandi = { kullaniciId, yeniAdSoyad, yeniEmail ->
+                kayitEmailDogrulamaAcik = false
+                bekleyenKayitRequest = null
+                onGirisBasarili(kullaniciId, yeniAdSoyad, yeniEmail)
+            }
+        )
+        return
+    }
+
+    // =========================================================
+    // ANA GİRİŞ EKRANI
+    // =========================================================
 
     Box(
         modifier = Modifier
@@ -281,19 +321,17 @@ fun GirisScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(
-                    horizontal = 24.dp,
-                    vertical = 32.dp
-                ),
+                .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
             Image(
-                painter = painterResource(Res.drawable.hesap_bende_uzun_logo),
-                contentDescription = "Hesap Bende Logo",
+                painter = painterResource(Res.drawable.hesap_benim_uzun_logo),
+                contentDescription = "Hesap Benim Logo",
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .height(80.dp)
@@ -308,7 +346,10 @@ fun GirisScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Sekme Seçimi
+            // =================================================
+            // GİRİŞ / KAYIT SEKME
+            // =================================================
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -317,6 +358,7 @@ fun GirisScreen(
                     .background(Color.Black.copy(alpha = 0.25f))
                     .padding(4.dp)
             ) {
+                // Giriş Tab
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -324,6 +366,8 @@ fun GirisScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (!isKayitModu) Color(0xFF13B0A5) else Color.Transparent)
                         .clickable {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
                             isKayitModu = false
                             hataMesaji = null
                             adSoyad = ""
@@ -343,6 +387,7 @@ fun GirisScreen(
                     )
                 }
 
+                // Kayıt Tab
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -350,6 +395,8 @@ fun GirisScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isKayitModu) Color(0xFF13B0A5) else Color.Transparent)
                         .clickable {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
                             isKayitModu = true
                             hataMesaji = null
                             email = ""
@@ -382,7 +429,7 @@ fun GirisScreen(
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Ad Soyad (Sadece Kayıt)
+                    // Ad Soyad
                     AnimatedVisibility(visible = isKayitModu) {
                         OutlinedTextField(
                             value = adSoyad,
@@ -390,28 +437,17 @@ fun GirisScreen(
                                 adSoyad = it
                                 hataMesaji = null
                             },
-                            label = { Text("Ad Soyad veya İşletme Adı", color = Color.White.copy(alpha = 0.8f)) },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.White) },
+                            label = { Text(text = "Ad Soyad veya İşletme Adı", color = Color.White.copy(alpha = 0.8f)) },
+                            leadingIcon = { Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = Color.White) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Text,
-                                imeAction = ImeAction.Next
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { emailFocusRequester.requestFocus() }
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                                cursorColor = Color.White
-                            ),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(emailFocusRequester) }),
+                            colors = girisTextFieldColors(),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    // E-posta
+                    // E-Posta
                     val emailHatali = email.isNotEmpty() && !emailGecerliMi(email)
                     OutlinedTextField(
                         value = email,
@@ -419,45 +455,33 @@ fun GirisScreen(
                             email = yeniDeger.trim()
                             hataMesaji = null
                         },
-                        label = { Text("E-posta Adresi", color = Color.White.copy(alpha = 0.8f)) },
-                        placeholder = { Text("ornek@mail.com", color = Color.White.copy(alpha = 0.4f)) },
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.White) },
+                        label = { Text(text = "E-posta Adresi", color = Color.White.copy(alpha = 0.8f)) },
+                        placeholder = { Text(text = "ornek@mail.com", color = Color.White.copy(alpha = 0.4f)) },
+                        leadingIcon = { Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = Color.White) },
                         isError = emailHatali,
                         supportingText = {
                             if (emailHatali) {
-                                Text("Geçerli bir e-posta adresi giriniz", color = Color(0xFFFF8A80), fontSize = 11.sp)
+                                Text(text = "Geçerli bir e-posta adresi giriniz", color = Color(0xFFFF8A80), fontSize = 11.sp)
                             }
                         },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next
-                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                         keyboardActions = KeyboardActions(
                             onNext = {
                                 if (isKayitModu) {
-                                    telefonFocusRequester.requestFocus()
+                                    sonrakiAlanaGit(telefonFocusRequester)
                                 } else {
-                                    sifreFocusRequester.requestFocus()
+                                    sonrakiAlanaGit(sifreFocusRequester)
                                 }
                             }
                         ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color.White,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                            cursorColor = Color.White,
-                            errorBorderColor = Color(0xFFFF8A80),
-                            errorLabelColor = Color(0xFFFF8A80),
-                            errorCursorColor = Color(0xFFFF8A80)
-                        ),
+                        colors = girisTextFieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(emailFocusRequester)
                     )
 
-                    // Telefon (Sadece Kayıt)
+                    // Telefon
                     AnimatedVisibility(visible = isKayitModu) {
                         OutlinedTextField(
                             value = telefon,
@@ -465,29 +489,16 @@ fun GirisScreen(
                                 telefon = yeniDeger.filter { it.isDigit() }.take(10)
                                 hataMesaji = null
                             },
-                            label = { Text("Telefon Numarası", color = Color.White.copy(alpha = 0.8f)) },
-                            placeholder = { Text("5321234567", color = Color.White.copy(alpha = 0.4f)) },
+                            label = { Text(text = "Telefon Numarası", color = Color.White.copy(alpha = 0.8f)) },
+                            placeholder = { Text(text = "5321234567", color = Color.White.copy(alpha = 0.4f)) },
                             supportingText = {
-                                Text("Başında 0 olmadan giriniz", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
+                                Text(text = "Başında 0 olmadan giriniz", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
                             },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = Color.White) },
+                            leadingIcon = { Icon(imageVector = Icons.Default.Phone, contentDescription = null, tint = Color.White) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Phone,
-                                imeAction = ImeAction.Next
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { sifreFocusRequester.requestFocus() }
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                                cursorColor = Color.White,
-                                focusedSupportingTextColor = Color.White.copy(alpha = 0.55f),
-                                unfocusedSupportingTextColor = Color.White.copy(alpha = 0.55f)
-                            ),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { sonrakiAlanaGit(sifreFocusRequester) }),
+                            colors = girisTextFieldColors(),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(telefonFocusRequester)
@@ -501,13 +512,13 @@ fun GirisScreen(
                             sifre = it
                             hataMesaji = null
                         },
-                        label = { Text("Şifre", color = Color.White.copy(alpha = 0.8f)) },
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White) },
+                        label = { Text(text = "Şifre", color = Color.White.copy(alpha = 0.8f)) },
+                        leadingIcon = { Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color.White) },
                         trailingIcon = {
                             IconButton(onClick = { sifreGoster = !sifreGoster }) {
                                 Icon(
                                     imageVector = if (sifreGoster) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (sifreGoster) "Şifreyi gizle" else "Şifreyi göster",
+                                    contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.7f)
                                 )
                             }
@@ -519,22 +530,16 @@ fun GirisScreen(
                             imeAction = if (isKayitModu) ImeAction.Next else ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
-                            onNext = { sifreTekrarFocusRequester.requestFocus() },
-                            onDone = { girisVeyaKayitYap() }
+                            onNext = { if (isKayitModu) sonrakiAlanaGit(sifreTekrarFocusRequester) },
+                            onDone = { if (!isKayitModu) girisVeyaKayitYap() }
                         ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color.White,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                            cursorColor = Color.White
-                        ),
+                        colors = girisTextFieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(sifreFocusRequester)
                     )
 
-                    // Şifre Kuralları (Sadece Kayıt)
+                    // Şifre Kuralları
                     AnimatedVisibility(visible = isKayitModu) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -549,7 +554,7 @@ fun GirisScreen(
                         }
                     }
 
-                    // Şifre Tekrar (Sadece Kayıt)
+                    // Şifre Tekrar
                     AnimatedVisibility(visible = isKayitModu) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
@@ -558,8 +563,8 @@ fun GirisScreen(
                                     sifreTekrar = it
                                     hataMesaji = null
                                 },
-                                label = { Text("Şifre Tekrar", color = Color.White.copy(alpha = 0.8f)) },
-                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White) },
+                                label = { Text(text = "Şifre Tekrar", color = Color.White.copy(alpha = 0.8f)) },
+                                leadingIcon = { Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color.White) },
                                 trailingIcon = {
                                     IconButton(onClick = { sifreTekrarGoster = !sifreTekrarGoster }) {
                                         Icon(
@@ -571,20 +576,9 @@ fun GirisScreen(
                                 },
                                 visualTransformation = if (sifreTekrarGoster) VisualTransformation.None else PasswordVisualTransformation(),
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Password,
-                                    imeAction = ImeAction.Done
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = { girisVeyaKayitYap() }
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = if (sifreTekrar.isNotEmpty() && sifre == sifreTekrar) Color(0xFF6EE7B7) else Color.White,
-                                    unfocusedBorderColor = if (sifreTekrar.isNotEmpty() && sifre == sifreTekrar) Color(0xFF6EE7B7) else Color.White.copy(alpha = 0.4f),
-                                    cursorColor = Color.White
-                                ),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { girisVeyaKayitYap() }),
+                                colors = girisTextFieldColors(),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(sifreTekrarFocusRequester)
@@ -600,6 +594,24 @@ fun GirisScreen(
                                     modifier = Modifier.padding(start = 4.dp)
                                 )
                             }
+                        }
+                    }
+
+                    // Kullanıcı Sözleşmesi Onayı (Yalnızca Kayıt Modunda)
+                    if (isKayitModu) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = sozlesmeKabul, onCheckedChange = { sozlesmeKabul = it })
+                            Text(
+                                text = "Kullanıcı Sözleşmesi’ni okudum ve kabul ediyorum.",
+                                color = Color.White,
+                                textDecoration = TextDecoration.Underline,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable(onClickLabel = "Kullanıcı Sözleşmesi’ni web sitesinde aç") {
+                                        urlAcici.ac(SOZLESME_URL)
+                                    }
+                                    .padding(vertical = 12.dp)
+                            )
                         }
                     }
 
@@ -620,7 +632,7 @@ fun GirisScreen(
                     // Buton
                     Button(
                         onClick = { girisVeyaKayitYap() },
-                        enabled = !yukleniyor,
+                        enabled = !yukleniyor && (!isKayitModu || sozlesmeKabul),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF13B0A5),
@@ -638,11 +650,30 @@ fun GirisScreen(
                             )
                         } else {
                             Text(
-                                text = if (isKayitModu) "Kayıt Ol ve Başla" else "Giriş Yap",
+                                text = if (isKayitModu) "Kayıt Ol" else "Giriş Yap",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
+                        }
+                    }
+
+                    // Şifremi Unuttum
+                    if (!isKayitModu && onSifremiUnuttum != null) {
+                        TextButton(
+                            onClick = {
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                                onSifremiUnuttum()
+                            },
+                            enabled = !yukleniyor,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = Color.White,
+                                disabledContentColor = Color.White.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Text("Şifremi unuttum", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -651,12 +682,10 @@ fun GirisScreen(
             Spacer(modifier = Modifier.height(28.dp))
         }
 
-        // Versiyon
         Text(
             text = "v$SURUM",
             color = Color.White.copy(alpha = 0.5f),
             fontSize = 12.sp,
-            fontWeight = FontWeight.Normal,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
@@ -664,11 +693,280 @@ fun GirisScreen(
     }
 }
 
+// =============================================================
+// KAYIT E-POSTA DOĞRULAMA
+// =============================================================
+
 @Composable
-private fun SifreKuralSatiri(
-    tamamlandi: Boolean,
-    metin: String
+private fun KayitEmailDogrulamaScreen(
+    request: RegisterRequest,
+    authService: AuthService,
+    onGeri: () -> Unit,
+    onKayitTamamlandi: (
+        kullaniciId: Long,
+        adSoyad: String,
+        email: String
+    ) -> Unit
 ) {
+    var kod by remember { mutableStateOf("") }
+    var yukleniyor by remember { mutableStateOf(false) }
+    var tekrarGonderiliyor by remember { mutableStateOf(false) }
+
+    var hataMesaji by remember { mutableStateOf<String?>(null) }
+    var bilgiMesaji by remember {
+        mutableStateOf<String?>("6 haneli doğrulama kodu e-posta adresinize gönderildi.")
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ArkaPlanGradyan)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    enabled = !yukleniyor && !tekrarGonderiliyor,
+                    onClick = onGeri
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Geri",
+                        tint = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "E-posta Doğrulama",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(90.dp)
+                    .clip(RoundedCornerShape(45.dp))
+                    .background(BeyazYariSeffaf),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MarkEmailUnread,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "E-posta Adresinizi Doğrulayın",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "${request.email} adresine gönderilen 6 haneli doğrulama kodunu girin.",
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = BeyazYariSeffaf)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "Doğrulama Kodu",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = kod,
+                        onValueChange = { yeniDeger ->
+                            kod = yeniDeger.filter { it.isDigit() }.take(6)
+                            hataMesaji = null
+                        },
+                        enabled = !yukleniyor && !tekrarGonderiliyor,
+                        label = { Text(text = "6 Haneli Kod") },
+                        placeholder = { Text(text = "000000") },
+                        leadingIcon = { Icon(imageVector = Icons.Default.Pin, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        enabled = kod.length == 6 && !yukleniyor && !tekrarGonderiliyor,
+                        onClick = {
+                            hataMesaji = null
+                            bilgiMesaji = null
+                            yukleniyor = true
+
+                            coroutineScope.launch {
+                                val result = authService.kayitEmailDogrula(
+                                    email = request.email,
+                                    kod = kod
+                                )
+                                yukleniyor = false
+
+                                result.onSuccess { response ->
+                                    if (response.basarili && response.kullaniciId != null) {
+                                        onKayitTamamlandi(
+                                            response.kullaniciId,
+                                            response.adSoyad ?: request.adSoyad,
+                                            response.email ?: request.email
+                                        )
+                                    } else {
+                                        hataMesaji = response.mesaj.ifBlank { "Doğrulama kodu hatalı." }
+                                    }
+                                }.onFailure { error ->
+                                    println("Kayıt E-posta Doğrulama Hatası: ${error.message}")
+                                    hataMesaji = "Doğrulama işlemi başarısız. Tekrar deneyin."
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        if (yukleniyor) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White)
+                        } else {
+                            Icon(imageVector = Icons.Default.Verified, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "E-postayı Doğrula", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    TextButton(
+                        enabled = !yukleniyor && !tekrarGonderiliyor,
+                        onClick = {
+                            tekrarGonderiliyor = true
+                            hataMesaji = null
+                            bilgiMesaji = null
+
+                            coroutineScope.launch {
+                                val result = authService.register(request)
+                                tekrarGonderiliyor = false
+
+                                result.onSuccess { response ->
+                                    if (response.basarili) {
+                                        kod = ""
+                                        bilgiMesaji = "Yeni doğrulama kodu e-posta adresinize gönderildi."
+                                    } else {
+                                        hataMesaji = response.mesaj.ifBlank { "Kod tekrar gönderilemedi." }
+                                    }
+                                }.onFailure { error ->
+                                    println("Kod Tekrar Gönderme Hatası: ${error.message}")
+                                    hataMesaji = "Kod tekrar gönderilemedi. Tekrar deneyin."
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (tekrarGonderiliyor) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Kod Gönderiliyor...", color = Color.White)
+                        } else {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "Kodu Tekrar Gönder", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = bilgiMesaji != null) {
+                Text(
+                    text = bilgiMesaji.orEmpty(),
+                    color = Color(0xFFB9F6CA),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                )
+            }
+
+            AnimatedVisibility(visible = hataMesaji != null) {
+                Text(
+                    text = hataMesaji.orEmpty(),
+                    color = Color(0xFFFF8A80),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+// =============================================================
+// TEXTFIELD RENKLERİ
+// =============================================================
+
+@Composable
+private fun girisTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedBorderColor = Color.White,
+    unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
+    cursorColor = Color.White,
+    errorBorderColor = Color(0xFFFF8A80),
+    errorLabelColor = Color(0xFFFF8A80),
+    errorCursorColor = Color(0xFFFF8A80),
+    focusedSupportingTextColor = Color.White.copy(alpha = 0.55f),
+    unfocusedSupportingTextColor = Color.White.copy(alpha = 0.55f)
+)
+
+// =============================================================
+// ŞİFRE KURAL SATIRI
+// =============================================================
+
+@Composable
+private fun SifreKuralSatiri(tamamlandi: Boolean, metin: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = if (tamamlandi) "✓" else "•",

@@ -33,7 +33,7 @@ kotlin {
             enable = true
         }
 
-        // HATA VEREN "withHostTest { ... }" BLOĞUNU BURADAN TAMAMEN SİLDİK!
+        withHostTestBuilder {}.configure {}
     }
 
     sourceSets {
@@ -64,6 +64,7 @@ kotlin {
         }
 
         androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
             implementation("app.cash.sqldelight:android-driver:2.0.2")
 
