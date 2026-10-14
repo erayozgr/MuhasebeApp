@@ -53,9 +53,9 @@ kotlin {
             implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
 
             // Ktor Core ve JSON Eklentileri (Tüm platformlarda ortak olmalı)
-            implementation("io.ktor:ktor-client-core:2.3.13")
-            implementation("io.ktor:ktor-client-content-negotiation:2.3.13")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.13")
+            implementation("io.ktor:ktor-client-core:3.6.0")
+            implementation("io.ktor:ktor-client-content-negotiation:3.6.0")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.0")
 
             // JSON Serileştirme
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
@@ -69,19 +69,19 @@ kotlin {
             implementation("app.cash.sqldelight:android-driver:2.0.2")
 
             // OkHttp motoru SADECE Android altında tanımlanmalıdır
-            implementation("io.ktor:ktor-client-okhttp:2.3.13")
+            implementation("io.ktor:ktor-client-okhttp:3.6.0")
         }
 
         iosMain.dependencies {
             implementation("app.cash.sqldelight:native-driver:2.0.2")
 
             // iOS ağ motoru (Darwin)
-            implementation("io.ktor:ktor-client-darwin:2.3.13")
+            implementation("io.ktor:ktor-client-darwin:3.6.0")
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
-            implementation("io.ktor:ktor-client-mock:2.3.13")
+            implementation("io.ktor:ktor-client-mock:3.6.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
         }
     }
