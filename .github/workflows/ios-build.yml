@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Repo'yu çek
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: JDK kur
         uses: actions/setup-java@v4
