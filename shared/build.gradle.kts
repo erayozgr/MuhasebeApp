@@ -25,7 +25,7 @@ kotlin {
     }
 
     androidLibrary {
-        namespace = "com.eray.muhasebeapp.shared"
+        namespace = "com.eozgur.hesapbenim.shared"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -53,9 +53,9 @@ kotlin {
             implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
 
             // Ktor Core ve JSON Eklentileri (Tüm platformlarda ortak olmalı)
-            implementation("io.ktor:ktor-client-core:2.3.12")
-            implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
+            implementation("io.ktor:ktor-client-core:2.3.13")
+            implementation("io.ktor:ktor-client-content-negotiation:2.3.13")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.13")
 
             // JSON Serileştirme
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
@@ -69,18 +69,20 @@ kotlin {
             implementation("app.cash.sqldelight:android-driver:2.0.2")
 
             // OkHttp motoru SADECE Android altında tanımlanmalıdır
-            implementation("io.ktor:ktor-client-okhttp:2.3.12")
+            implementation("io.ktor:ktor-client-okhttp:2.3.13")
         }
 
         iosMain.dependencies {
             implementation("app.cash.sqldelight:native-driver:2.0.2")
 
             // iOS ağ motoru (Darwin)
-            implementation("io.ktor:ktor-client-darwin:2.3.12")
+            implementation("io.ktor:ktor-client-darwin:2.3.13")
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation("io.ktor:ktor-client-mock:2.3.13")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
         }
     }
 }
@@ -93,7 +95,7 @@ sqldelight {
     databases {
         create("AppDatabase") {
             // 🎯 Eklentinin kırmızılığını çözen, üretilen klasörle birebir eşleşen paket adı:
-            packageName.set("com.eray.muhasebeapp.database.shared")
+            packageName.set("com.eozgur.hesapbenim.database.shared")
             dialect("app.cash.sqldelight:sqlite-3-35-dialect:2.0.2")
         }
     }

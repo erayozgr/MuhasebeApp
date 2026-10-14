@@ -21,11 +21,11 @@ dependencies {
 }
 
 android {
-    namespace = "com.eray.muhasebeapp"
+    namespace = "com.eozgur.hesapbenim"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.eray.muhasebeapp"
+        applicationId = "com.eozgur.hesapbenim"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
