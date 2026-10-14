@@ -1,6 +1,8 @@
-﻿package com.eozgur.hesapbenim.util
+﻿@file:OptIn(kotlin.time.ExperimentalTime::class)
 
-import kotlinx.datetime.Instant
+package com.eozgur.hesapbenim.util
+
+import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
