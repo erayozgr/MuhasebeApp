@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 
-    id("app.cash.sqldelight") version "2.0.2"
+    id("app.cash.sqldelight") version "2.4.1"
 
     kotlin("plugin.serialization")
 }
@@ -50,7 +50,7 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(compose.materialIconsExtended)
 
-            implementation("app.cash.sqldelight:coroutines-extensions:2.0.2")
+            implementation("app.cash.sqldelight:coroutines-extensions:2.4.1")
 
             // Ktor Core ve JSON Eklentileri (Tüm platformlarda ortak olmalı)
             implementation("io.ktor:ktor-client-core:2.3.13")
@@ -66,14 +66,14 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
-            implementation("app.cash.sqldelight:android-driver:2.0.2")
+            implementation("app.cash.sqldelight:android-driver:2.4.1")
 
             // OkHttp motoru SADECE Android altında tanımlanmalıdır
             implementation("io.ktor:ktor-client-okhttp:2.3.13")
         }
 
         iosMain.dependencies {
-            implementation("app.cash.sqldelight:native-driver:2.0.2")
+            implementation("app.cash.sqldelight:native-driver:2.4.1")
 
             // iOS ağ motoru (Darwin)
             implementation("io.ktor:ktor-client-darwin:2.3.13")
@@ -96,7 +96,7 @@ sqldelight {
         create("AppDatabase") {
             // 🎯 Eklentinin kırmızılığını çözen, üretilen klasörle birebir eşleşen paket adı:
             packageName.set("com.eozgur.hesapbenim.database.shared")
-            dialect("app.cash.sqldelight:sqlite-3-35-dialect:2.0.2")
+            dialect("app.cash.sqldelight:sqlite-3-35-dialect:2.4.1")
         }
     }
 }
